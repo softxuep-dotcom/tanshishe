@@ -46,3 +46,32 @@ test('a real steering route collects enough cargo and reaches the exit',()=>{
   assert.equal(run.phase,'won',JSON.stringify({head:run.head,count:run.cargo.length,goal,phase:run.phase}));
   assert.ok(run.cargo.length>=6);
 });
+
+test('joystick points to an absolute heading and wraps angles the short way',()=>{
+  const run=new CargoRun();run.start();run.rivals=[];
+  run.head={x:220,y:550,angle:Math.PI-.05};
+  run.update(.1,{...straight,heading:-Math.PI+.05});
+  assert.ok(Math.abs(Math.atan2(Math.sin(run.head.angle-(-Math.PI+.05)),Math.cos(run.head.angle-(-Math.PI+.05))))<.001);
+});
+test('boost drains energy, requires release after exhaustion, and recharges',()=>{
+  const run=new CargoRun();run.start();run.loose=[];run.rivals=[];
+  advance(run,.4,{...straight,boost:true});assert.ok(run.head.y<525);assert.ok(run.fuel<.9);
+  run.fuel=.041;advance(run,.3,{...straight,boost:true});assert.equal(run.boosting,false);assert.equal(run.boostExhausted,true);
+  const fuel=run.fuel;advance(run,1,straight);assert.ok(run.fuel>fuel);assert.equal(run.boostExhausted,false);
+  run.update(.1,{...straight,boost:true});assert.equal(run.boosting,true);
+});
+test('tail interception creates loot once while rival is disabled',()=>{
+  const run=new CargoRun();run.start();run.head={x:264,y:306,angle:0};
+  const cart=run.loose.shift();Object.assign(cart,{x:238,y:306,angle:0});run.cargo.push(cart);
+  run.rivals=[{id:0,x:220,y:306,angle:0,waypoint:1,path:[[220,306],[300,306]],disabled:0,speed:55}];
+  run.update(1/60,straight);assert.equal(run.steals,1);assert.equal(run.cargo.length+run.loose.length,21);assert.ok(run.rivals[0].disabled>6);
+  advance(run,.2);assert.equal(run.steals,1);assert.equal(run.cargo.length+run.loose.length,21);
+});
+test('head-on collision loses trailers rather than rewarding an interception',()=>{
+  const run=new CargoRun();run.start();run.head={x:230,y:306,angle:0};
+  run.cargo=run.loose.splice(0,3);run.cargo.forEach((c,i)=>Object.assign(c,{x:204-i*26,y:306,angle:0}));
+  run.loose.forEach(c=>c.cooldown=100);
+  run.rivals=[{id:0,x:250,y:306,angle:0,waypoint:1,path:[[250,306],[300,306]],disabled:0,speed:55}];
+  run.update(1/60,straight);assert.equal(run.steals,0);assert.equal(run.cargo.length,1);assert.equal(run.cargo.length+run.loose.length,18);
+  run.start();assert.equal(run.steals,0);assert.equal(run.fuel,1);assert.equal(run.loose.length,18);
+});
