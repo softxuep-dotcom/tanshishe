@@ -75,3 +75,24 @@ test('head-on collision loses trailers rather than rewarding an interception',()
   run.update(1/60,straight);assert.equal(run.steals,0);assert.equal(run.cargo.length,1);assert.equal(run.cargo.length+run.loose.length,18);
   run.start();assert.equal(run.steals,0);assert.equal(run.fuel,1);assert.equal(run.loose.length,18);
 });
+
+test('head contact during impact immunity cannot count as a tail interception',()=>{
+  const run=new CargoRun();run.start();run.head={x:230,y:306,angle:0};
+  run.cargo=run.loose.splice(0,1);
+  Object.assign(run.cargo[0],{x:204,y:306,angle:0});
+  run.loose.forEach(c=>c.cooldown=100);
+  run.impactCooldown=1;
+  run.rivals=[{id:0,x:217,y:306,angle:0,waypoint:1,path:[[217,306],[300,306]],disabled:0,speed:0}];
+  run.update(1/60,straight);
+  assert.equal(run.steals,0);
+  assert.equal(run.cargo.length+run.loose.length,18);
+  assert.equal(run.cargo.length,1);
+});
+
+test('paused and finished runs never report an active boost',()=>{
+  const run=new CargoRun();run.start();run.update(1/60,{...straight,boost:true});
+  assert.equal(run.snapshot().boosting,true);
+  run.pause();assert.equal(run.snapshot().boosting,false);
+  run.pause();run.remaining=.001;run.update(1/60,{...straight,boost:true});
+  assert.equal(run.phase,'lost');assert.equal(run.snapshot().boosting,false);
+});

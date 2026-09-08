@@ -78,12 +78,18 @@ export default function Home() {
     const visibility = () => { if (document.hidden) pause(); };
     const key = (event: KeyboardEvent, pressed: boolean) => {
       const k = event.key.toLowerCase();
+      if (k === 'escape') {
+        event.preventDefault();
+        if (pressed && !event.repeat) { clear(); run.current.pause(); setView(run.current.snapshot()); }
+        return;
+      }
+      // Keep native Space activation available on menus; never queue driving input while paused.
+      if (run.current.phase !== 'playing') { clear(); return; }
       if (['arrowleft', 'a', 'arrowright', 'd', 'arrowdown', 's', ' ', 'escape'].includes(k)) event.preventDefault();
       if (k === 'arrowleft' || k === 'a') input.current.left = pressed;
       if (k === 'arrowright' || k === 'd') input.current.right = pressed;
       if (k === 'arrowdown' || k === 's') input.current.brake = pressed;
       if (k === ' ') input.current.boost = pressed;
-      if (k === 'escape' && pressed && !event.repeat) { run.current.pause(); setView(run.current.snapshot()); }
     };
     const down = (e: KeyboardEvent) => key(e, true), up = (e: KeyboardEvent) => key(e, false);
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);

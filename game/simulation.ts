@@ -43,7 +43,7 @@ export class CargoRun {
   value() { return this.cargo.reduce((sum, item) => sum + (item.gold ? 30 : 10), 0); }
   snapshot(): RunSnapshot {
     const multiplier = 1 + Math.floor(this.cargo.length / 3) * 0.2;
-    return { phase: this.phase, remaining: this.remaining, count: this.cargo.length, value: this.value(), multiplier, score: Math.round(this.value() * multiplier), toast: this.toast, toastId: this.toastId, fuel: this.fuel, boosting: this.boosting, combo: this.combo, comboTime: this.comboTime, steals: this.steals };
+    return { phase: this.phase, remaining: this.remaining, count: this.cargo.length, value: this.value(), multiplier, score: Math.round(this.value() * multiplier), toast: this.toast, toastId: this.toastId, fuel: this.fuel, boosting: this.phase === 'playing' && this.boosting, combo: this.combo, comboTime: this.comboTime, steals: this.steals };
   }
   wallHit(x: number, y: number, radius: number, gateOpen: boolean) {
     return x < 22 + radius || x > 418 - radius || y > 638 - radius ||
@@ -114,7 +114,9 @@ export class CargoRun {
       if (d < 2) rival.waypoint=(rival.waypoint+1)%rival.path.length;
       else { rival.angle=Math.atan2(dy,dx); const travel=Math.min(d,rival.speed*dt); rival.x+=dx/d*travel;rival.y+=dy/d*travel; }
       // A head-on collision costs cargo; crossing the rival's route with your tail earns loot.
-      if (Math.hypot(rival.x-this.head.x,rival.y-this.head.y)<26 && this.impactCooldown<=0) {
+      if (Math.hypot(rival.x-this.head.x,rival.y-this.head.y)<26) {
+        // Immunity suppresses damage, but head contact still takes precedence over the tail.
+        if (this.impactCooldown > 0) continue;
         this.impactCooldown=2; rival.disabled=1.5;
         if(this.cargo.length) this.dropFrom(Math.max(0,this.cargo.length-2));
         this.combo=0;this.comboTime=0;this.fuel=Math.max(0,this.fuel-.2);
