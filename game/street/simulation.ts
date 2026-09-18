@@ -1,0 +1,116 @@
+export type Role = 'chen' | 'tuo' | 'man';
+export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss';
+export type Action = 'attack' | 'jump' | 'throw' | 'special';
+export const HEROES = {
+  chen: { name: '陈野', title: '街头拳手', detail: '连拳 · 上勾拳 · 均衡', speed: 86, damage: 14, color: 0xf1ba63 },
+  tuo: { name: '阿拓', title: '修车铺的大块头', detail: '重拳 · 远投 · 强壮', speed: 67, damage: 19, color: 0x65cbb1 },
+  man: { name: '小满', title: '夜市快腿', detail: '快踢 · 飞踢 · 灵活', speed: 107, damage: 11, color: 0xdf7f9c },
+};
+export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; jump: number; vx: number; wind: number; charge: number; dead: number; }
+export interface Spark { x: number; y: number; life: number; text: string; }
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+export class StreetGame {
+  phase: 'select' | 'intro' | 'playing' | 'bossIntro' | 'won' | 'lost' = 'select';
+  paused = false; role: Role = 'chen'; hero: Fighter; enemies: Fighter[] = []; sparks: Spark[] = [];
+  time = 0; camera = 0; wave = 0; kills = 0; rage = 50; combo = 0; comboTime = 0; hitstop = 0; shake = 0;
+  mx = 0; my = 0; held = false; serial = 0; attackStep = 0; events: string[] = []; food = false;
+  constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
+  fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, jump: 0, vx: 0, wind: 0, charge: 0, dead: 0 }; }
+  start(role: Role) {
+    this.role = role; this.hero = this.fighter(role, 85, 199, role === 'tuo' ? 180 : 150); this.hero.timer = 0;
+    this.enemies = []; this.sparks = []; this.phase = 'intro'; this.paused = false; this.time = 0; this.camera = 0; this.wave = 0;
+    this.kills = 0; this.rage = 50; this.combo = 0; this.comboTime = 0; this.hitstop = 0; this.shake = 0; this.attackStep = 0; this.food = false; this.clearInput();
+  }
+  clearInput() { this.mx = 0; this.my = 0; this.held = false; }
+  proceed() { if (this.phase === 'intro') { this.phase = 'playing'; this.spawn(); } else if (this.phase === 'bossIntro') { this.phase = 'playing'; this.enemies.push(this.fighter('boss', 1215, 197, 330)); } }
+  spawn() {
+    const x = this.wave * 410;
+    const kinds: Kind[][] = [['punk', 'punk', 'runner'], ['punk', 'runner', 'tank', 'punk'], ['runner', 'tank', 'punk']];
+    (kinds[this.wave] || []).forEach((k, i) => this.enemies.push(this.fighter(k, x + 230 + i * 49, 174 + (i % 3) * 26, k === 'tank' ? 86 : k === 'runner' ? 42 : 52)));
+  }
+  action(a: Action) {
+    if (this.phase !== 'playing' || this.paused) return;
+    const p = this.hero;
+    if (p.stun > 0 || p.timer > 0) return;
+    if (a === 'jump') { if (p.jump <= 0) { p.jump = .7; p.pose = 'jump'; p.poseTime = .7; this.events.push('jump'); } return; }
+    const nearby = this.enemies.filter(e => e.hp > 0 && Math.abs(e.y - p.y) < 21 && Math.abs(e.x - p.x) < 52).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x));
+    if (nearby[0]) p.face = nearby[0].x >= p.x ? 1 : -1;
+    if (a === 'special') {
+      if (this.rage < 50) { this.sparks.push({ x: p.x, y: p.y - 63, life: .6, text: '怒气不足' }); return; }
+      this.rage -= 50; p.inv = .8; p.timer = .7; p.pose = 'special'; p.poseTime = .65;
+      for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - p.x) < 108 && Math.abs(e.y - p.y) < 49) this.hit(e, 40, (e.x >= p.x ? 1 : -1) * 250);
+      this.shake = .3; this.events.push('special'); return;
+    }
+    if (a === 'throw') {
+      const e = nearby.find(e => Math.abs(e.x - p.x) < (this.role === 'tuo' ? 43 : 32) && e.kind !== 'boss');
+      p.timer = .4;
+      if (!e) { this.sparks.push({ x: p.x, y: p.y - 65, life: .65, text: '靠近小兵再抓投' }); return; }
+      p.pose = 'throw'; p.poseTime = .4; this.hit(e, this.role === 'tuo' ? 42 : 29, p.face * 350); e.pose = 'thrown'; e.poseTime = .7; e.stun = .75;
+      for (const other of this.enemies) if (other !== e && other.hp > 0 && (other.x - e.x) * p.face > 0 && Math.abs(other.x - e.x) < 130 && Math.abs(other.y - e.y) < 30) this.hit(other, 25, p.face * 185);
+      this.events.push('throw'); return;
+    }
+    this.attackStep = this.comboTime > 0 ? (this.attackStep + 1) % 3 : 0;
+    p.pose = p.jump > 0 ? 'kick' : this.attackStep === 2 ? 'uppercut' : 'punch'; p.poseTime = .22;
+    p.timer = this.role === 'man' ? .23 : this.role === 'tuo' ? .39 : .29;
+    let landed = false;
+    for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.y - p.y) < 23 && (e.x - p.x) * p.face > -9 && (e.x - p.x) * p.face < (p.jump > 0 ? 63 : 48)) {
+      this.hit(e, HEROES[this.role].damage * (this.attackStep === 2 || p.jump > 0 ? 1.6 : 1), p.face * (this.attackStep === 2 ? 185 : 45)); landed = true;
+    }
+    if (!landed) this.events.push('swing');
+  }
+  hit(e: Fighter, damage: number, velocity: number) {
+    if (e.hp <= 0) return;
+    e.hp = Math.max(0, e.hp - damage); e.stun = e.kind === 'boss' ? .16 : .3; e.wind = 0; e.charge = 0; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
+    this.combo++; this.comboTime = 2; this.rage = Math.min(100, this.rage + 5); this.hitstop = .045; this.shake = .12;
+    this.sparks.push({ x: e.x, y: e.y - 28, life: .33, text: String(Math.round(damage)) }); this.events.push('hit');
+    if (!e.hp) { e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5); }
+  }
+  hurt(damage: number, face: number) {
+    const p = this.hero; if (p.inv > 0 || p.jump > .12) return;
+    p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
+    this.combo = 0; this.shake = .2; this.events.push('hurt'); if (!p.hp) { this.phase = 'lost'; this.clearInput(); }
+  }
+  update(delta: number) {
+    if (this.phase !== 'playing' || this.paused) return;
+    const dt = Math.min(delta, .035); this.time += dt; this.shake = Math.max(0, this.shake - dt);
+    this.sparks = this.sparks.filter(s => (s.life -= dt) > 0);
+    if (this.hitstop > 0) { this.hitstop -= dt; return; }
+    this.comboTime = Math.max(0, this.comboTime - dt); if (!this.comboTime) this.combo = 0;
+    for (const f of [this.hero, ...this.enemies]) {
+      f.timer = Math.max(0, f.timer - dt); f.stun = Math.max(0, f.stun - dt); f.inv = Math.max(0, f.inv - dt); f.jump = Math.max(0, f.jump - dt);
+      f.poseTime = Math.max(0, f.poseTime - dt); if (!f.poseTime) f.pose = 'idle';
+      f.x += f.vx * dt; f.vx *= Math.exp(-7 * dt); f.dead = Math.max(0, f.dead - dt);
+    }
+    const p = this.hero; const alive = this.enemies.filter(e => e.hp > 0);
+    if (!p.stun) {
+      const len = Math.max(1, Math.hypot(this.mx, this.my));
+      p.x += this.mx / len * HEROES[this.role].speed * dt * (p.timer > 0 ? .45 : 1); p.y += this.my / len * 61 * dt;
+      if (this.mx && p.timer <= 0) p.face = this.mx > 0 ? 1 : -1;
+      if (this.held) this.action('attack');
+    }
+    const right = this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300;
+    const left = Math.min(this.wave, 2) * 410;
+    p.x = clamp(p.x, left + 22, right - 20); p.y = clamp(p.y, 157, 243);
+    this.camera = clamp(p.x - 170, left, Math.max(left, right - 480 + 45));
+    for (const e of alive) {
+      e.x = clamp(e.x, left + 15, right - 15); e.y = clamp(e.y, 156, 242);
+      if (e.stun > 0) continue;
+      if (e.charge > 0) { e.charge -= dt; e.x += e.face * 230 * dt; if (Math.abs(e.x - p.x) < 27 && Math.abs(e.y - p.y) < 24) this.hurt(23, e.face); if (e.charge <= 0) { e.stun = 1.2; e.pose = 'hurt'; e.poseTime = 1.2; } continue; }
+      if (e.wind > 0) { e.wind -= dt; if (e.wind <= 0) { if (e.kind === 'boss') { e.charge = .68; e.pose = 'charge'; e.poseTime = .68; } else { e.pose = 'punch'; e.poseTime = .23; if (Math.abs(e.x - p.x) < 43 && Math.abs(e.y - p.y) < 22) this.hurt(e.kind === 'tank' ? 18 : 10, e.face); } } continue; }
+      const dx = p.x - e.x, dy = p.y - e.y; e.face = dx >= 0 ? 1 : -1;
+      const attackers = alive.filter(o => o !== e && (o.wind > 0 || o.charge > 0)).length;
+      if (Math.abs(dx) < (e.kind === 'boss' ? 160 : 33) && Math.abs(dy) < 16 && !e.timer && attackers < 2) {
+        e.wind = e.kind === 'boss' ? .8 : e.kind === 'runner' ? .42 : .62; e.timer = e.kind === 'boss' ? 2.5 : 1.5; e.pose = 'wind'; e.poseTime = e.wind; continue;
+      }
+      const targetY = p.y + (e.id % 2 ? 7 : -7); const speed = e.kind === 'runner' ? 58 : e.kind === 'tank' ? 27 : 38;
+      if (Math.abs(dx) > 29) e.x += Math.sign(dx) * speed * dt;
+      if (Math.abs(targetY - e.y) > 4) e.y += Math.sign(targetY - e.y) * 29 * dt;
+      for (const o of alive) if (o.id < e.id && Math.abs(o.x - e.x) < 21 && Math.abs(o.y - e.y) < 12) e.y += (e.id % 2 ? 1 : -1) * 23 * dt;
+    }
+    if (this.food && Math.abs(p.x - 768) < 25 && Math.abs(p.y - 208) < 23) { p.hp = Math.min(p.max, p.hp + 45); this.food = false; this.sparks.push({ x: p.x, y: p.y - 50, life: 1, text: '+45 热包子' }); this.events.push('heal'); }
+    if (!alive.length && this.enemies.every(e => !e.dead)) {
+      if (this.wave === 3) { this.phase = 'won'; this.clearInput(); }
+      else if (p.x > right - 60) { this.wave++; this.enemies = []; if (this.wave === 3) { this.wave = 2; this.phase = 'bossIntro'; this.clearInput(); /* boss shares the final street */ this.wave = 3; p.x = 1130; this.camera = 880; } else { this.spawn(); if (this.wave === 1) this.food = true; } }
+    }
+  }
+}
