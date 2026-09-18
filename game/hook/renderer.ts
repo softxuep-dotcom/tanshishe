@@ -13,6 +13,7 @@ export function createHookGame(parent: HTMLElement, sim: HookGame, publish: (sta
     private rope!: Phaser.GameObjects.Graphics;
     private labels: Phaser.GameObjects.Text[] = [];
     private entities = new Map<string, Phaser.GameObjects.Container>();
+    private cargoLabels = new Map<string, Phaser.GameObjects.Text>();
     private currentBodies?: Body[];
     private level = -1;
     private activePointer: number | null = null;
@@ -88,6 +89,7 @@ export function createHookGame(parent: HTMLElement, sim: HookGame, publish: (sta
     private rebuild() {
       this.labels.forEach(t => t.destroy()); this.labels = [];
       this.entities.forEach(e => e.destroy()); this.entities.clear();
+      this.cargoLabels.clear();
       this.currentBodies = sim.bodies; this.level = sim.levelIndex;
       const g = this.floor; g.clear();
       g.fillStyle(C.floor).fillRect(0, 0, 440, 580);
@@ -146,6 +148,10 @@ export function createHookGame(parent: HTMLElement, sim: HookGame, publish: (sta
           g.fillStyle(0xfff1cd).fillRoundedRect(3, 1, 12, 11, 2); g.lineStyle(1, 0xb58e50).lineBetween(7, 4, 12, 4); g.lineBetween(7, 7, 10, 7);
         }
       }
+      if (b.required) {
+        const label = this.add.text(0, -b.r - 14, '', { fontFamily: font, fontSize: '13px', fontStyle: 'bold', color: '#775626', backgroundColor: '#fff8e8', padding: { x: 4, y: 3 } }).setOrigin(.5);
+        this.cargoLabels.set(b.id, label); parts.push(label);
+      }
       return this.add.container(b.x, b.y, parts).setDepth(b.kind === 'anchor' ? 4 : b.kind === 'robot' ? 9 : 6);
     }
     update(time: number, delta: number) {
@@ -170,6 +176,10 @@ export function createHookGame(parent: HTMLElement, sim: HookGame, publish: (sta
         }
       }
       const delivered = new Set(sim.delivered().map(b => b.id));
+      for (const b of sim.bodies) if (b.required) {
+        const ready = delivered.has(b.id), name = b.kind === 'heavy' ? '重箱' : '轻箱';
+        this.cargoLabels.get(b.id)?.setText(`${name} · ${ready ? '就位' : '待送'}`).setColor(ready ? '#39603d' : '#775626').setBackgroundColor(ready ? '#e4eedb' : '#fff8e8');
+      }
       for (const b of sim.bodies) if (delivered.has(b.id)) { g.lineStyle(3, 0x62a078, .7).strokeRoundedRect(b.x - b.r - 5, b.y - b.r - 5, b.r * 2 + 10, b.r * 2 + 10, 10); }
       this.rope.clear(); const rope = this.rope, p = sim.robot, t = sim.target;
       if (t) {

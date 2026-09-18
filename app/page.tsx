@@ -182,6 +182,8 @@ function HookPlayground() {
   const active = ready && view.phase === 'playing' && !error;
   const isLast = view.levelIndex === LEVELS.length - 1;
   const allComplete = completed.length === LEVELS.length;
+  const missingCargo = view.cargo.filter(cargo => !cargo.delivered);
+  const shipHint = view.canShip || view.phase === 'won' ? '全部到齐！' : missingCargo.length === 0 ? '松手后装车' : missingCargo.length === 1 ? `还差${missingCargo[0].label}` : `还差 ${missingCargo.length} 件货`;
   const unlocked = Math.min(LEVELS.length - 1, completed.length ? Math.max(...completed) + 1 : 0);
   const roomSelection = <div className="hook-room-list" aria-label="选择房间">{LEVELS.map((level, index) => <button key={index} disabled={!ready || index > unlocked} className={view.levelIndex === index ? 'hook-room is-current' : 'hook-room'} onClick={() => loadLevel(index)} aria-label={`房间 ${index + 1}：${level.title}${completed.includes(index) ? '，已完成' : ''}`}><span>{completed.includes(index) ? <Check size={15} strokeWidth={3} /> : String(index + 1).padStart(2, '0')}</span><b>{level.title}</b>{completed.includes(index) && <small>已完成</small>}</button>)}</div>;
 
@@ -199,6 +201,7 @@ function HookPlayground() {
       <section className="hook-mission" aria-label="当前任务">
         <div className="hook-mission-text"><span className="hook-eyebrow">ROOM {String(view.levelIndex + 1).padStart(2, '0')}<i />{String(LEVELS.length).padStart(2, '0')}</span><h2>{view.title}</h2><p>{view.subtitle}</p></div>
         <div className={`hook-cargo-count${view.canShip || view.phase === 'won' ? ' is-ready' : ''}`}><Package size={20} strokeWidth={1.8} /><strong>{view.delivered}<span> / {view.total}</span></strong><small>货物就位</small></div>
+        <ul className="hook-cargo-list" aria-label="必送货物清单" aria-live="polite">{view.cargo.map(cargo => <li key={cargo.id} className={cargo.delivered ? 'is-delivered' : ''}><span className={`hook-parcel hook-parcel-${cargo.kind}`} aria-hidden="true">{cargo.kind === 'heavy' ? '重' : ''}</span><b>{cargo.label}</b><span className="hook-cargo-state">{cargo.delivered ? <><Check size={14} strokeWidth={3} />已就位</> : '待送'}</span></li>)}</ul>
       </section>
 
       <section className="hook-field" aria-label="搬运工场">
@@ -209,10 +212,10 @@ function HookPlayground() {
           {view.phase === 'won' ? <>
             <span className="hook-stamp"><Check size={32} strokeWidth={3} /></span>
             <span className="hook-eyebrow">DELIVERY COMPLETE</span>
-            <h2 id="hook-dialog-title">{allComplete ? '小工场，全部搞定！' : '这车装得漂亮！'}</h2>
-            <p>{view.total} 件货物送达 · {view.moves} 次牵引<br />{isLast ? '换个顺序，还能搬得更顺吗？' : '下个房间，试试新的搬法。'}</p>
+            <h2 id="hook-dialog-title">{isLast ? '三关原型试玩完成！' : '这车装得漂亮！'}</h2>
+            <p>{view.total} 件货物送达 · {view.moves} 次牵引<br />{isLast ? `当前原型共 ${LEVELS.length} 关，暂时没有第 ${LEVELS.length + 1} 关。` : '下个房间，试试新的搬法。'}</p>
             {!isLast && <button className="hook-primary" onClick={() => loadLevel(view.levelIndex + 1)}>下个房间 <ArrowRight size={18} /></button>}
-            {isLast && <button className="hook-primary" onClick={() => loadLevel(0)}>再逛一次工场 <RotateCcw size={18} /></button>}
+            {isLast && <button className="hook-primary" onClick={() => loadLevel(0)}>从第一关重玩 <RotateCcw size={18} /></button>}
             <button className="hook-secondary" onClick={() => update(() => sim.current.restart())}><RotateCcw size={15} />重玩这个房间</button>
             {allComplete && <><div className="hook-divider"><span>随时回来搬一趟</span></div>{roomSelection}</>}
           </> : <>
@@ -230,7 +233,7 @@ function HookPlayground() {
 
       <footer className="hook-footer">
         <div className="hook-help"><span className="hook-hint-dot" /><p aria-live="polite">{view.notice || view.hint}<small>按住牵引 · 松手停下</small></p></div>
-        <button className={`hook-ship${view.canShip ? ' is-ready' : ''}`} disabled={!active || !view.canShip} onClick={() => update(() => sim.current.ship())}><Truck size={21} strokeWidth={1.9} /><span>装车<small>{view.canShip ? '出发吧！' : '等货物就位'}</small></span>{view.canShip && <ArrowRight size={15} />}</button>
+        <button className={`hook-ship${view.canShip ? ' is-ready' : ''}`} disabled={!active || !view.canShip} onClick={() => update(() => sim.current.ship())}><Truck size={21} strokeWidth={1.9} /><span>装车<small>{shipHint}</small></span>{view.canShip && <ArrowRight size={15} />}</button>
         <span className="hook-desktop-keys">按住鼠标牵引<span>·</span>Z 撤销<span>·</span>R 重来</span>
       </footer>
     </div>

@@ -8,12 +8,13 @@ const anchors = (points: number[][]): Spawn[] => points.map(([x, y], i) => ({ id
 export const LEVELS: Level[] = [
   { title: '第一份委托', subtitle: '先把小箱子拉进装货区', hint: '按住箱子牵引 · 松手停下', dock: { x: 142, y: 385, w: 156, h: 150 }, walls: [],
     spawns: [{ id: 'robot', kind: 'robot', x: 220, y: 495 }, { id: 'box', kind: 'light', x: 220, y: 265, required: true }, ...anchors([[65, 90], [375, 90], [65, 290], [375, 290], [65, 520], [375, 520]])] },
-  { title: '换个角度', subtitle: '绕到箱子另一侧，把两件货送到下方', hint: '按住蓝色固定点移动自己，再拉货物', dock: { x: 70, y: 415, w: 330, h: 135 }, walls: [{ x: 188, y: 150, w: 65, h: 205 }],
+  { title: '换个角度', subtitle: '轻箱、重箱都要送进绿色装货区', hint: '按住蓝色固定点移动自己，再拉货物', dock: { x: 70, y: 415, w: 330, h: 135 }, walls: [{ x: 188, y: 150, w: 65, h: 205 }],
     spawns: [{ id: 'robot', kind: 'robot', x: 340, y: 530 }, { id: 'box', kind: 'light', x: 95, y: 175, required: true }, { id: 'heavy', kind: 'heavy', x: 340, y: 420, required: true }, ...anchors([[70, 75], [365, 75], [70, 340], [365, 330], [92, 552], [400, 552]])] },
-  { title: '先用，后搬', subtitle: '重箱压住圆盘开门，也可以走右侧绕路', hint: '货物也是工具：先压门，最后一起装车', dock: { x: 45, y: 416, w: 350, h: 134 }, walls: [{ x: 18, y: 245, w: 157, h: 24 }, { x: 265, y: 245, w: 45, h: 24 }], plate: { x: 140, y: 410, r: 34 }, gate: { x: 175, y: 245, w: 90, h: 24 },
+  { title: '先用，后搬', subtitle: '重箱可以借来压门，最后两箱都要装车', hint: '重箱压住圆盘开门，也可以走右侧绕路', dock: { x: 45, y: 416, w: 350, h: 134 }, walls: [{ x: 18, y: 245, w: 157, h: 24 }, { x: 265, y: 245, w: 45, h: 24 }], plate: { x: 140, y: 410, r: 34 }, gate: { x: 175, y: 245, w: 90, h: 24 },
     spawns: [{ id: 'robot', kind: 'robot', x: 285, y: 510 }, { id: 'box', kind: 'light', x: 220, y: 140, required: true }, { id: 'heavy', kind: 'heavy', x: 140, y: 440, required: true }, ...anchors([[65, 80], [370, 90], [140, 335], [370, 350], [92, 555], [240, 555], [400, 535], [225, 350]])] },
 ];
-export type HookSnapshot = { levelIndex: number; title: string; subtitle: string; hint: string; total: number; delivered: number; moves: number; phase: 'playing' | 'paused' | 'won'; canShip: boolean; canUndo: boolean; gateOpen: boolean; notice: string };
+export type CargoStatus = { id: string; kind: Kind; label: string; delivered: boolean };
+export type HookSnapshot = { levelIndex: number; title: string; subtitle: string; hint: string; cargo: CargoStatus[]; total: number; delivered: number; moves: number; phase: 'playing' | 'paused' | 'won'; canShip: boolean; canUndo: boolean; gateOpen: boolean; notice: string };
 type Checkpoint = { bodies: Body[]; moves: number; gateOpen: boolean; time: number };
 const edges: Rect[] = [{ x: 0, y: 0, w: 440, h: 18 }, { x: 0, y: 562, w: 440, h: 18 }, { x: 0, y: 0, w: 18, h: 580 }, { x: 422, y: 0, w: 18, h: 580 }];
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
@@ -66,8 +67,10 @@ export class HookGame {
     return this.bodies.filter(b => b.required && b.x - b.r >= d.x - .5 && b.x + b.r <= d.x + d.w + .5 && b.y - b.r >= d.y - .5 && b.y + b.r <= d.y + d.h + .5 && Math.hypot(b.vx, b.vy) < 9);
   }
   snapshot(): HookSnapshot {
-    const total = this.bodies.filter(b => b.required).length, delivered = this.delivered().length;
-    return { levelIndex: this.levelIndex, title: this.level.title, subtitle: this.level.subtitle, hint: this.level.hint, total, delivered, moves: this.moves, phase: this.phase, canShip: this.phase === 'playing' && delivered === total && !this.targetId, canUndo: this.history.length > 0 && this.phase !== 'won', gateOpen: this.gateOpen, notice: this.notice };
+    const deliveredIds = new Set(this.delivered().map(b => b.id));
+    const cargo = this.bodies.filter(b => b.required).map(b => ({ id: b.id, kind: b.kind, label: b.kind === 'heavy' ? '重箱' : '轻箱', delivered: deliveredIds.has(b.id) }));
+    const total = cargo.length, delivered = deliveredIds.size;
+    return { levelIndex: this.levelIndex, title: this.level.title, subtitle: this.level.subtitle, hint: this.level.hint, cargo, total, delivered, moves: this.moves, phase: this.phase, canShip: this.phase === 'playing' && delivered === total && !this.targetId, canUndo: this.history.length > 0 && this.phase !== 'won', gateOpen: this.gateOpen, notice: this.notice };
   }
   canReach(b: Body) {
     const p = this.robot;
