@@ -1,11 +1,16 @@
 import { AIR_PHYSICS, ATTACKS, GROUND_CHAIN, JUMP_SPEED, KNOCKBACK, attackDuration, type AttackDefinition, type HitImpact, type Role } from './combat-data.ts';
-import { BOSS_RULES, ENCOUNTERS, REINFORCEMENTS } from './encounter-data.ts';
+import { BOSS_APPROACH, BOSS_MOVES, BOSS_RULES, CHARGES, ENCOUNTERS, REINFORCEMENTS } from './encounter-data.ts';
+import { CHAPTERS, CHAPTER_COUNT, waveBounds, type ChapterIndex } from './chapter-data.ts';
 export type { Role } from './combat-data.ts';
-export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss' | 'slinger' | 'longleg';
+export type { ChapterIndex } from './chapter-data.ts';
+export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss' | 'slinger' | 'longleg' | 'luchuan' | 'hanxiao';
 export type Action = 'attack' | 'jump' | 'throw' | 'special' | 'dodge';
 export type EnemyKind = Exclude<Kind, Role>;
-export const isBoss = (kind: Kind) => kind === 'boss' || kind === 'longleg';
-export const enemyHealth = (kind: Kind) => isBoss(kind) ? 330 : kind === 'tank' ? 86 : kind === 'runner' || kind === 'slinger' ? 42 : 52;
+const BOSS_KINDS: readonly Kind[] = ['boss', 'longleg', 'luchuan', 'hanxiao'];
+export const isBoss = (kind: Kind) => BOSS_KINDS.includes(kind);
+const BOSS_HEALTH: Record<string, number> = { boss: 330, longleg: 330, luchuan: 360, hanxiao: 420 };
+const BOSS_RECOVERY: Record<string, number> = { boss: BOSS_RULES.boss.recovery, longleg: BOSS_RULES.longleg.recovery, luchuan: BOSS_RULES.luchuan.recovery, hanxiao: BOSS_RULES.hanxiao.recovery };
+export const enemyHealth = (kind: Kind) => BOSS_HEALTH[kind] ?? (kind === 'tank' ? 86 : kind === 'runner' || kind === 'slinger' ? 42 : 52);
 export interface Crate { id: number; x: number; y: number; snack: boolean; }
 export interface Shot { x: number; y: number; vx: number; life: number; crate: boolean; snack: boolean; }
 export interface Snack { x: number; y: number; }
@@ -15,7 +20,7 @@ export const HEROES = {
   man: { name: '小满', title: '夜市快腿', detail: '快踢 · 飞踢 · 灵活', speed: 107, damage: 11, color: 0xdf7f9c },
 };
 export type MotionState = 'grounded' | 'takeoff' | 'airborne' | 'landing' | 'launched' | 'downed' | 'rising';
-export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; height: number; heightVelocity: number; motion: MotionState; motionTime: number; vx: number; wind: number; charge: number; dead: number; knockbackAmount: number; knockbackRecovery: number; entryTime: number; vulnerable: number; bossAttack: number; }
+export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; height: number; heightVelocity: number; motion: MotionState; motionTime: number; vx: number; wind: number; charge: number; dead: number; knockbackAmount: number; knockbackRecovery: number; entryTime: number; vulnerable: number; bossAttack: number; guard: number; bossStep: number; bossMove: number; }
 interface Flight { hitIds: Set<number>; collateral: boolean; wallBounces: number; }
 export interface Spark { x: number; y: number; life: number; text: string; }
 export interface EnemySlot { id: number; x: number; y: number; attack: boolean; occupant: number | null; }
@@ -28,11 +33,66 @@ export class StreetGame {
   get remainingEnemies() { return this.enemies.filter(e => e.hp > 0).length + this.pendingEnemies; }
   get encounterClear() { return this.remainingEnemies === 0 && this.enemies.every(e => e.dead <= 0); }
   isBossVulnerable(e: Fighter) { return isBoss(e.kind) && e.hp > 0 && e.motion === 'grounded' && e.vulnerable > 0; }
+  /** Which telegraphed move a chapter 3/4 boss has already committed to, for HUD and warning art. */
+  bossPendingMove(e: Fighter) { const moves = BOSS_MOVES[e.kind]; return moves && e.bossMove >= 0 ? moves[e.bossMove] ?? null : null; }
   private openBossRecovery(e: Fighter) {
     if (!isBoss(e.kind)) return;
-    const duration = e.kind === 'boss' ? BOSS_RULES.boss.recovery : BOSS_RULES.longleg.recovery;
+    const duration = BOSS_RECOVERY[e.kind] ?? BOSS_RULES.boss.recovery;
     e.vulnerable = duration; e.stun = duration; e.wind = 0; e.charge = 0; e.bossAttack = 0;
+    e.guard = 0; e.bossStep = 0;
     e.pose = 'hurt'; e.poseTime = duration; e.timer = Math.max(e.timer, duration + .35);
+  }
+  // Chapter 3/4 bosses are trained fighters: telegraphed strings, then a readable recovery.
+  private boxerRules(kind: Kind) { return kind === 'hanxiao' ? BOSS_RULES.hanxiao : BOSS_RULES.luchuan; }
+  private isBoxer(kind: Kind) { return kind === 'luchuan' || kind === 'hanxiao'; }
+  private bossPhase2(e: Fighter) { return e.hp < e.max * .5; }
+  private bossPunch(e: Fighter) {
+    const rules = this.boxerRules(e.kind), p = this.hero;
+    e.bossStep = Math.max(0, e.bossStep - 1);
+    e.bossAttack = rules.hit + (this.bossPhase2(e) ? rules.gapPhase2 : rules.gap);
+    e.pose = 'punch'; e.poseTime = e.bossAttack;
+    if ((p.x - e.x) * e.face > -8 && (p.x - e.x) * e.face < rules.reach && Math.abs(p.y - e.y) < rules.lane) this.hurt(rules.damage, e.face);
+  }
+  private advanceBossAttack(e: Fighter) {
+    if (this.isBoxer(e.kind) && e.bossStep > 0) { this.bossPunch(e); return; }
+    this.openBossRecovery(e);
+  }
+  private releaseBossMove(e: Fighter) {
+    const rules = this.boxerRules(e.kind), p = this.hero;
+    const moves = BOSS_MOVES[e.kind] ?? [];
+    const move = moves[e.bossMove] ?? 'combo';
+    if (move === 'kick' && e.kind === 'hanxiao') {
+      const k = BOSS_RULES.hanxiao;
+      e.pose = 'kick'; e.bossAttack = k.kick; e.poseTime = e.bossAttack;
+      if ((p.x - e.x) * e.face > -8 && (p.x - e.x) * e.face < k.kickReach && Math.abs(p.y - e.y) < 24) this.hurt(k.kickDamage, e.face, k.kickHeight);
+      return;
+    }
+    if (move === 'charge') { e.charge = rules.active; e.pose = 'charge'; e.poseTime = e.charge; return; }
+    e.bossStep = this.bossPhase2(e) ? rules.comboPhase2 : rules.combo;
+    this.bossPunch(e);
+  }
+  // A scheduled sidestep, never a read of the player's current input.
+  private beginBoxerMove(e: Fighter) {
+    const rules = this.boxerRules(e.kind), phase2 = this.bossPhase2(e);
+    const moves = BOSS_MOVES[e.kind] ?? ['combo'];
+    e.bossMove = (e.bossMove + 1) % moves.length;
+    e.timer = phase2 ? rules.cooldownPhase2 : rules.cooldown;
+    if (moves[e.bossMove] === 'counter' && e.kind === 'luchuan') {
+      e.guard = phase2 ? BOSS_RULES.luchuan.guardPhase2 : BOSS_RULES.luchuan.guard;
+      e.pose = 'guard'; e.poseTime = e.guard; return;
+    }
+    e.wind = e.kind === 'hanxiao' && phase2 ? BOSS_RULES.hanxiao.windPhase2 : rules.wind;
+    e.pose = 'wind'; e.poseTime = e.wind;
+  }
+  private updateBoxerGuard(e: Fighter, dt: number) {
+    const p = this.hero;
+    e.guard = Math.max(0, e.guard - dt);
+    e.face = p.x >= e.x ? 1 : -1;
+    // Slip out of the player's lane, then answer with a short lunge.
+    const away = e.y <= p.y ? -1 : 1;
+    e.y = clamp(e.y + away * BOSS_RULES.luchuan.guardDrift * dt, 156, 242);
+    if (e.guard) return;
+    e.charge = this.boxerRules(e.kind).active; e.pose = 'charge'; e.poseTime = e.charge;
   }
   private flights = new Map<number, Flight>();
   private flightHits: { target: Fighter; velocity: number }[] = [];
@@ -90,19 +150,23 @@ export class StreetGame {
     const fraction = travelTime > 0 ? Math.min(1, dt / travelTime) : 0;
     e.x += dx * fraction; e.y += dy * fraction;
   }
-  chapter: 0 | 1 = 0; crates: Crate[] = []; carried: Crate | null = null; shots: Shot[] = []; snacks: Snack[] = [];
-  get chapterName() { return this.chapter === 0 ? '南桥夜市' : '河边货场'; }
-  get bossName() { return this.chapter === 0 ? '铁头' : '长腿'; }
-  nextChapter() { if (this.phase === 'won' && this.chapter === 0 && !this.training) this.start(this.role, 1); }
+  chapter: ChapterIndex = 0; crates: Crate[] = []; carried: Crate | null = null; shots: Shot[] = []; snacks: Snack[] = [];
+  get chapterData() { return CHAPTERS[this.chapter]; }
+  get chapterName() { return this.chapterData.name; }
+  get bossName() { return this.chapterData.bossName; }
+  get bossKind() { return this.chapterData.boss; }
+  get hasNextChapter() { return this.chapter + 1 < CHAPTER_COUNT; }
+  get bounds() { return waveBounds(this.wave); }
+  nextChapter() { if (this.phase === 'won' && this.hasNextChapter && !this.training) this.start(this.role, (this.chapter + 1) as ChapterIndex); }
   restockCrates() {
     this.carried = null; this.shots = []; this.snacks = [];
-    const x = Math.min(this.wave, 2) * 410;
-    this.crates = this.chapter === 1 || this.training ? [
+    const x = waveBounds(this.wave).left;
+    this.crates = this.chapterData.crates || this.training ? [
       { id: ++this.serial, x: x + 143, y: 211, snack: true },
       { id: ++this.serial, x: x + 194, y: 173, snack: false },
     ] : [];
   }
-  dropCrate() { if (this.carried) { this.carried.x = clamp(this.hero.x + this.hero.face * 25, Math.min(this.wave, 2) * 410 + 20, (this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300) - 20); this.carried.y = this.hero.y; this.crates.push(this.carried); this.carried = null; } }
+  dropCrate() { if (this.carried) { const { left, right } = this.bounds; this.carried.x = clamp(this.hero.x + this.hero.face * 25, left + 20, right - 20); this.carried.y = this.hero.y; this.crates.push(this.carried); this.carried = null; } }
   training = false; godMode = false; freezeEnemies = false; showRanges = false;
   trainingEnemy: EnemyKind = 'punk'; trainingCount = 1;
   startTraining(role: Role, kind: EnemyKind = 'punk', count = 1) {
@@ -161,8 +225,8 @@ export class StreetGame {
     } else this.action(action);
   }
   constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
-  fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, height: 0, heightVelocity: 0, motion: 'grounded', motionTime: 0, vx: 0, wind: 0, charge: 0, dead: 0, knockbackAmount: 0, knockbackRecovery: 0, entryTime: 0, vulnerable: 0, bossAttack: 0 }; }
-  start(role: Role, chapter: 0 | 1 = 0) {
+  fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, height: 0, heightVelocity: 0, motion: 'grounded', motionTime: 0, vx: 0, wind: 0, charge: 0, dead: 0, knockbackAmount: 0, knockbackRecovery: 0, entryTime: 0, vulnerable: 0, bossAttack: 0, guard: 0, bossStep: 0, bossMove: -1 }; }
+  start(role: Role, chapter: ChapterIndex = 0) {
     this.spawnQueue = []; this.reinforcementTime = REINFORCEMENTS.delay; this.enemyLimit = 0;
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
     this.enemySlots = []; this.nextAttackStep = 0;
@@ -176,7 +240,15 @@ export class StreetGame {
   }
   stopHeldAttack() { this.held = false; this.buffered = this.buffered.filter(input => input.action !== 'attack'); }
   clearInput() { this.mx = 0; this.my = 0; this.held = false; this.sprint = false; this.buffered = []; }
-  proceed() { if (this.phase === 'intro') { this.phase = 'playing'; this.spawn(); } else if (this.phase === 'bossIntro') { this.phase = 'playing'; this.enemies.push(this.fighter(this.chapter === 1 ? 'longleg' : 'boss', 1215, 197, 330)); if (this.chapter === 1) { this.restockCrates(); this.crates.forEach(c => c.x += 140); } } }
+  proceed() {
+    if (this.phase === 'intro') { this.phase = 'playing'; this.spawn(); return; }
+    if (this.phase !== 'bossIntro') return;
+    this.phase = 'playing';
+    const kind = this.bossKind;
+    this.enemies.push(this.fighter(kind, 1215, 197, enemyHealth(kind)));
+    // The boss street keeps its props so throwable cover carries into the duel.
+    if (this.chapterData.crates) { this.restockCrates(); this.crates.forEach(c => c.x += 140); }
+  }
   spawn() {
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
     this.enemySlots = [];
@@ -195,8 +267,8 @@ export class StreetGame {
     if (this.enemies.filter(e => e.hp > 0).length >= this.enemyLimit) { this.reinforcementTime = REINFORCEMENTS.delay; return; }
     this.reinforcementTime -= dt;
     if (this.reinforcementTime > 1e-8) return;
-    const left = Math.min(this.wave, 2) * 410 + 28;
-    const right = (this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300) - 28;
+    const { left: leftEdge, right: rightEdge } = this.bounds;
+    const left = leftEdge + 28, right = rightEdge - 28;
     const points = [left, right].flatMap(x => REINFORCEMENTS.lanes.map(y => ({ x, y })))
       .filter(point => Math.hypot(point.x - this.hero.x, point.y - this.hero.y) >= 90);
     const score = (point: { x: number; y: number }) => Math.min(
@@ -310,7 +382,7 @@ export class StreetGame {
     const guarded = isBoss(e.kind) && !this.isBossVulnerable(e);
     if (guarded) damage *= BOSS_RULES.guardedDamageScale;
     this.releaseEnemySlot(e.id);
-    e.hp = Math.max(0, e.hp - damage); e.stun = Math.max(e.vulnerable, isBoss(e.kind) ? .16 : .3); e.wind = 0; e.charge = 0; e.bossAttack = 0; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
+    e.hp = Math.max(0, e.hp - damage); e.stun = Math.max(e.vulnerable, isBoss(e.kind) ? .16 : .3); e.wind = 0; e.charge = 0; e.bossAttack = 0; e.guard = 0; e.bossStep = 0; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
     this.combo++; this.comboTime = 2; this.rage = Math.min(100, this.rage + 5);
     this.hitstop = Math.max(this.hitstop, Math.abs(velocity) > 100 ? .075 : .035);
     this.shake = Math.max(this.shake, Math.abs(velocity) > 100 ? .16 : .065);
@@ -339,7 +411,7 @@ export class StreetGame {
   }
   private launch(f: Fighter, speed: number, pose = 'launched', collateral = true) {
     this.releaseEnemySlot(f.id); f.motion = 'launched'; f.motionTime = 0; f.heightVelocity = speed;
-    f.pose = pose; f.poseTime = 0; f.wind = 0; f.charge = 0;
+    f.pose = pose; f.poseTime = 0; f.wind = 0; f.charge = 0; f.guard = 0; f.bossStep = 0;
     f.knockbackAmount = 0; f.knockbackRecovery = 0;
     this.flights.set(f.id, { hitIds: new Set([f.id]), collateral, wallBounces: 0 });
   }
@@ -361,8 +433,8 @@ export class StreetGame {
     }
   }
   private moveFlight(f: Fighter, flight: Flight, delta: number) {
-    const left = Math.min(this.wave, 2) * 410 + 15;
-    const right = (this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300) - 15;
+    const { left: leftEdge, right: rightEdge } = this.bounds;
+    const left = leftEdge + 15, right = rightEdge - 15;
     f.x = clamp(f.x, left, right);
     let remaining = delta, elapsed = 0;
     // At most one bounce, then one final segment; never teleport through a wall.
@@ -466,8 +538,7 @@ export class StreetGame {
         while (this.buffered.length && p.timer <= 0 && !this.motionLocked) this.action(this.buffered.shift()!.action);
       } else if (this.held) this.action('attack', false);
     }
-    const right = this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300;
-    const left = Math.min(this.wave, 2) * 410;
+    const { left, right } = this.bounds;
     p.x = clamp(p.x, left + 22, right - 20); p.y = clamp(p.y, 157, 243);
     this.camera = clamp(p.x - 170, left, Math.max(left, right - 480 + 45));
     for (const shot of this.shots) {
@@ -498,10 +569,12 @@ export class StreetGame {
       if (e.hp <= 0) continue;
       e.x = clamp(e.x, left + 15, right - 15); e.y = clamp(e.y, 156, 242);
       if (e.entryTime > 0 || e.stun > 0 || e.vulnerable > 0 || e.motion !== 'grounded' || (this.training && this.freezeEnemies)) continue;
-      if (e.bossAttack > 0) { e.bossAttack = Math.max(0, e.bossAttack - dt); if (!e.bossAttack) this.openBossRecovery(e); continue; }
-      if (e.charge > 0) { const step = Math.min(dt, e.charge); e.charge -= step; e.x = clamp(e.x + e.face * 230 * step, left + 15, right - 15); if (Math.abs(e.x - p.x) < 27 && Math.abs(e.y - p.y) < 24) this.hurt(23, e.face); if (e.charge <= 0) this.openBossRecovery(e); continue; }
+      if (e.bossAttack > 0) { e.bossAttack = Math.max(0, e.bossAttack - dt); if (!e.bossAttack) this.advanceBossAttack(e); continue; }
+      if (e.guard > 0) { this.updateBoxerGuard(e, dt); continue; }
+      if (e.charge > 0) { const c = CHARGES[e.kind] ?? CHARGES.boss; const step = Math.min(dt, e.charge); e.charge -= step; e.x = clamp(e.x + e.face * c.speed * step, left + 15, right - 15); if (Math.abs(e.x - p.x) < c.reach && Math.abs(e.y - p.y) < c.lane) this.hurt(c.damage, e.face); if (e.charge <= 0) this.openBossRecovery(e); continue; }
       if (e.wind > 0) { e.wind -= dt; if (e.wind <= 0) {
-        if (e.kind === 'boss') { e.charge = BOSS_RULES.boss.active; e.pose = 'charge'; e.poseTime = e.charge; }
+        if (this.isBoxer(e.kind)) this.releaseBossMove(e);
+        else if (e.kind === 'boss') { e.charge = BOSS_RULES.boss.active; e.pose = 'charge'; e.poseTime = e.charge; }
         else if (e.kind === 'slinger') { this.shots.push({x:e.x+e.face*18,y:e.y,vx:e.face*170,life:2.5,crate:false,snack:false}); e.pose='throw'; e.poseTime=.3; }
         else if (e.kind === 'longleg') { e.pose='kick'; e.bossAttack=BOSS_RULES.longleg.active; e.poseTime=e.bossAttack; if ((p.x-e.x)*e.face > -8 && (p.x-e.x)*e.face < 105 && Math.abs(e.y-p.y)<24) this.hurt(24,e.face,34); }
         else { e.pose = 'punch'; e.poseTime = .23; if (Math.abs(e.x - p.x) < 43 && Math.abs(e.y - p.y) < 22) this.hurt(e.kind === 'tank' ? 18 : 10, e.face); }
@@ -510,13 +583,15 @@ export class StreetGame {
       const attackers = alive.filter(o => o !== e && (o.wind > 0 || o.charge > 0 || o.bossAttack > 0)).length;
       const slot = this.enemySlots.find(s => s.occupant === e.id);
       const atAttackSlot = !this.isSlotEnemy(e) || (slot?.attack && Math.hypot(slot.x - e.x, slot.y - e.y) <= 3);
-      if (atAttackSlot && Math.abs(dx) < (e.kind === 'slinger' ? 300 : e.kind === 'longleg' ? 102 : e.kind === 'boss' ? 160 : 33) && Math.abs(dy) < 16 && !e.timer && attackers < 2) {
+      const approach = BOSS_APPROACH[e.kind];
+      if (atAttackSlot && Math.abs(dx) < (e.kind === 'slinger' ? 300 : approach?.range ?? 33) && Math.abs(dy) < 16 && !e.timer && attackers < 2) {
+        if (this.isBoxer(e.kind)) { this.beginBoxerMove(e); continue; }
         e.wind = e.kind === 'slinger' ? .9 : isBoss(e.kind) ? .8 : e.kind === 'runner' ? .42 : .62; e.timer = isBoss(e.kind) || e.kind === 'slinger' ? 2.5 : 1.5; e.pose = 'wind'; e.poseTime = e.wind; continue;
       }
       if (e.kind === 'slinger') { if (Math.abs(dx)<115) e.x-=Math.sign(dx)*42*dt; else if (Math.abs(dx)>200) e.x+=Math.sign(dx)*30*dt; if (Math.abs(dy)>6) e.y+=Math.sign(dy)*24*dt; continue; }
       if (this.isSlotEnemy(e)) { if (slot) this.moveToEnemySlot(e, slot, dt); continue; }
-      const targetY = p.y + (e.id % 2 ? 7 : -7); const speed = e.kind === 'runner' ? 58 : e.kind === 'tank' ? 27 : 38;
-      if (Math.abs(dx) > (e.kind === 'longleg' ? 70 : 29)) e.x += Math.sign(dx) * (e.kind === 'longleg' ? 58 : speed) * dt;
+      const targetY = p.y + (e.id % 2 ? 7 : -7); const speed = approach?.speed ?? (e.kind === 'runner' ? 58 : e.kind === 'tank' ? 27 : 38);
+      if (Math.abs(dx) > (approach?.hold ?? 29)) e.x += Math.sign(dx) * speed * dt;
       if (Math.abs(targetY - e.y) > 4) e.y += Math.sign(targetY - e.y) * 29 * dt;
       for (const o of alive) if (o.id < e.id && Math.abs(o.x - e.x) < 21 && Math.abs(o.y - e.y) < 12) e.y += (e.id % 2 ? 1 : -1) * 23 * dt;
     }

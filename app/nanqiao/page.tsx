@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { HEROES, StreetGame, isBoss, type Action, type Role, type EnemyKind } from '../../game/street/simulation';
+import { CHAPTERS, bossDisplayName, type ChapterIndex } from '../../game/street/chapter-data';
+import { HERO_TOKEN, STORY, speaker } from '../../game/street/story-data';
 import './street.css';
 import { AttackHold, DoublePushRun, readStick } from '../../game/street/touch-input';
 
@@ -15,6 +17,7 @@ function Glyph({ name }: { name: keyof typeof GLYPHS }) {
   return <svg className="glyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d={GLYPHS[name]} /></svg>;
 }
 const roleColor = (role: Role) => `#${HEROES[role].color.toString(16).padStart(6, '0')}`;
+const MOVE_LABELS: Record<string, string> = { combo: '连拳', counter: '侧移反击', kick: '长踢', charge: '冲撞' };
 
 export default function StreetPage() {
   const [sim] = useState(() => new StreetGame()); const [, render] = useState(0);
@@ -35,7 +38,7 @@ export default function StreetPage() {
       else setFullscreenMessage('此浏览器不支持全屏，请尝试从浏览器菜单添加到主屏幕。');
     } catch { setFullscreenMessage('未能进入全屏，请再点一次或使用支持全屏的浏览器。'); }
   }
-  const [role, setRole] = useState<Role>('chen'); const [chapter, setChapter] = useState<0 | 1>(0); const [trainingPanel, setTrainingPanel] = useState(false); const [muted, setMuted] = useState(false); const muteRef = useRef(false);
+  const [role, setRole] = useState<Role>('chen'); const [chapter, setChapter] = useState<ChapterIndex>(0); const [trainingPanel, setTrainingPanel] = useState(false); const [muted, setMuted] = useState(false); const muteRef = useRef(false);
   const audio = useRef<AudioContext | null>(null); const stick = useRef<number | null>(null); const [knob, setKnob] = useState({ x: 0, y: 0 });
   const attackHold = useRef(new AttackHold());
   const touchRun = useRef(new DoublePushRun());
@@ -111,8 +114,17 @@ export default function StreetPage() {
     }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}><b>{text}</b><small className="street-key">{key}</small><small className="street-touch-hint">{recovering ? '恢复中' : hint}</small></button>;
   }
   const play = sim.phase === 'playing'; const boss = sim.enemies.find(e => e.hp > 0 && isBoss(e.kind));
+  const script = STORY[sim.chapter]; const bossScene = script.boss[sim.role];
+  const heroName = (text: string) => text.split(HERO_TOKEN).join(HEROES[sim.role].name);
+  const paragraphs = (lines: readonly string[]) => lines.map((text, i) => <span key={i}>{i > 0 && <br />}{text}</span>);
   const bossOpen = boss ? sim.isBossVulnerable(boss) : false;
-  const bossState = !boss ? '' : bossOpen ? `破绽 ${boss.vulnerable.toFixed(1)}s` : boss.motion !== 'grounded' ? '倒地恢复' : '防御减伤 25%';
+  const bossMove = boss ? sim.bossPendingMove(boss) : null;
+  const bossState = !boss ? ''
+    : bossOpen ? `破绽 ${boss.vulnerable.toFixed(1)}s`
+    : boss.motion !== 'grounded' ? '倒地恢复'
+    : boss.guard > 0 ? '侧移中 · 减伤 25%'
+    : boss.wind > 0 && bossMove ? `${MOVE_LABELS[bossMove]}预警 · 减伤 25%`
+    : '防御减伤 25%';
   const waveHint = sim.training ? `陪练剩余 ${sim.remainingEnemies} · 击倒 ${sim.kills}`
     : `剩余 ${sim.remainingEnemies}${sim.pendingEnemies ? ` · 待援 ${sim.pendingEnemies}` : ''}`;
   const shellStyle = { '--role': roleColor(sim.role) } as CSSProperties;
@@ -124,7 +136,7 @@ export default function StreetPage() {
   return <main ref={shell} className="street-shell" data-phase={sim.phase} data-playing={play ? 'yes' : 'no'} style={shellStyle}>
     {!play && <header className="street-top">
       <span className="street-brand">南桥街<em>最后一场</em></span>
-      <span className="street-badge">两章试玩</span>
+      <span className="street-badge">四章原型</span>
       <div className="street-top-actions">
         <button className="icon-button" aria-pressed={fullscreen} aria-label={fullscreen ? '退出全屏' : '全屏'} onClick={() => void toggleFullscreen()}><Glyph name={fullscreen ? 'shrink' : 'expand'} /></button>
         <button className="icon-button" aria-pressed={!muted} aria-label={muted ? '打开声音' : '关闭声音'} onClick={() => { setMuted(!muted); muteRef.current = !muted; }}><Glyph name={muted ? 'mute' : 'sound'} /></button>
@@ -139,7 +151,7 @@ export default function StreetPage() {
         <h2>桥下练习场</h2><p className="street-note">切换陪练会清除当前敌人；重置会恢复双方状态。</p>
         <div className="training-rows">
           <label><span>角色</span><select aria-label="角色" value={sim.role} onChange={e => { sim.role = e.target.value as Role; sim.resetTraining(); sim.paused = true; refresh(); }}>{(Object.keys(HEROES) as Role[]).map(id => <option key={id} value={id}>{HEROES[id].name}</option>)}</select></label>
-          <label><span>陪练</span><select aria-label="陪练" value={sim.trainingEnemy} onChange={e => { sim.setTrainingOpponents(e.target.value as EnemyKind, sim.trainingCount); refresh(); }}><option value="punk">街头拳手</option><option value="runner">游斗快手</option><option value="tank">壮汉</option><option value="boss">铁头 Boss</option><option value="slinger">投掷手</option><option value="longleg">长腿 Boss</option></select></label>
+          <label><span>陪练</span><select aria-label="陪练" value={sim.trainingEnemy} onChange={e => { sim.setTrainingOpponents(e.target.value as EnemyKind, sim.trainingCount); refresh(); }}><option value="punk">街头拳手</option><option value="runner">游斗快手</option><option value="tank">壮汉</option><option value="slinger">投掷手</option><option value="boss">铁头 Boss</option><option value="longleg">长腿 Boss</option><option value="luchuan">陆川 Boss</option><option value="hanxiao">韩骁 Boss</option></select></label>
           <label><span>数量</span><select aria-label="数量" value={sim.trainingCount} onChange={e => { sim.setTrainingOpponents(sim.trainingEnemy, Number(e.target.value)); refresh(); }}>{[1,2,3,4].map(n => <option key={n}>{n}</option>)}</select></label>
         </div>
         <div className="training-options">{([['godMode','无敌'],['freezeEnemies','陪练不行动'],['showRanges','显示判定范围']] as const).map(([key,label]) => <label key={key} className="switch"><input type="checkbox" checked={sim[key]} onChange={e => { sim[key] = e.target.checked; refresh(); }}/><i aria-hidden="true" /><span>{label}</span></label>)}</div>
@@ -157,7 +169,7 @@ export default function StreetPage() {
             <small className="hud-rage-label">怒气 {sim.rage}/100{sim.rage >= 50 && <em>绝招就绪</em>}</small>
           </div>
           {boss && <div className="hud-boss" data-open={bossOpen ? 'yes' : 'no'}>
-            <div className="hud-boss-name"><span>{boss.kind === 'longleg' ? '长腿' : '铁头'}</span><em>{bossState}</em></div>
+            <div className="hud-boss-name"><span>{bossDisplayName(boss.kind)}</span><em>{bossState}</em></div>
             <div className="hud-bar boss"><u style={{ width: `${boss.hp / boss.max * 100}%` }} /><i style={{ width: `${boss.hp / boss.max * 100}%` }} /></div>
           </div>}
           <div className="hud-right">
@@ -170,10 +182,10 @@ export default function StreetPage() {
           </div>
         </div>
         {sim.combo > 1 && <div className="street-combo" key={sim.combo}><b>{sim.combo}</b><span>HITS</span></div>}
-        {sim.time < 9 && <div className="street-tip" style={{ opacity: Math.min(1, (9 - sim.time) / 1.5) }}>{sim.chapter === 1 ? '靠近木箱按抓投 · 攻击扔出 · 绿标箱内有补给' : '连打清兵 · 靠近抓投 · 跳跃躲攻击'}</div>}
+        {sim.time < 9 && <div className="street-tip" style={{ opacity: Math.min(1, (9 - sim.time) / 1.5) }}>{script.tip}</div>}
       </>}
       {sim.phase === 'select' && <div className="street-overlay street-select">
-        <p className="street-kicker">原创街头动作 · 两章试玩</p>
+        <p className="street-kicker">原创街头动作 · 四章原型</p>
         <h1>南桥街<span>最后一场</span></h1>
         <p className="street-subtitle">今晚这顿饭，得打完再吃。</p>
         <div className="street-roster">{(Object.keys(HEROES) as Role[]).map((id, i) => <button key={id} className={`roster-card ${role === id ? 'selected' : ''}`} aria-pressed={role === id} style={{ '--role': roleColor(id) } as CSSProperties} onClick={() => setRole(id)}>
@@ -186,41 +198,42 @@ export default function StreetPage() {
           </span>
           <small className="roster-detail">{HEROES[id].detail}</small>
         </button>)}</div>
-        <div className="chapter-picker">{([0,1] as const).map(n => <button key={n} aria-pressed={chapter===n} onClick={() => setChapter(n)}><b>{n===0 ? '01' : '02'}</b><span>{n===0 ? '南桥夜市' : '河边货场'}</span></button>)}</div>
+        <div className="chapter-picker">{CHAPTERS.map((c, n) => <button key={c.code} aria-pressed={chapter===n} onClick={() => setChapter(n as ChapterIndex)}><b>{c.code}</b><span>{c.name}</span></button>)}</div>
         <button disabled={!ready || error} className="street-primary" onClick={() => { unlock(); sim.start(role, chapter); refresh(); }}>{error ? '加载失败，请刷新' : ready ? `选 ${HEROES[role].name} · 开打 →` : '正在准备夜市…'}</button>
         <p className="street-help"><span>电脑</span> WASD 移动 · J 连打 · K 跳跃 · L 抓投 · I 绝招<br /><span>手机</span> 左摇杆 + 右侧五键，横屏更开阔</p>
       </div>}
       {sim.phase === 'intro' && <div className="street-overlay street-story"><div className="street-plate">
-        <span className="street-kicker">{sim.chapter===0 ? '第一关 / 饭还没吃完' : '第二关 / 他欠的是什么'}</span>
-        <h2>{sim.chapter===0 ? '一副旧拳套，砸进了菜盘。' : '河风吹过上锁的货场。'}</h2>
-        <div className="street-lines">{sim.chapter===0 ? <><p><b>打手</b><span>「陆川让带句话。今晚的比赛，你们别去。」</span></p><p><b>陈野</b><span>「他人呢？」</span></p><p><b>小满</b><span>「先把拳套拿出来。桌子打坏了要赔。」</span></p></> : <><p><b>小满</b><span>「练拳的地方，为什么要锁大门？」</span></p><p><b>阿拓</b><span>「怕人进来。」</span></p><p><b>陈野</b><span>「也可能怕人出去。」</span></p></>}</div>
-        <div className="street-tutorial"><span className="street-tutorial-tag">操作</span>{sim.chapter===0 ? <>按住攻击连打 · 靠近抓投 · 跳跃接飞踢<br/>50 怒气释放绝招</> : <>靠近木箱按<b>抓投</b>举起，按<b>攻击</b>扔出<br/>再次抓投可放下；绿标箱破碎掉补给，木箱能挡罐子。</>}</div>
-        <div className="street-actions-row"><button className="street-primary" onClick={() => { sim.proceed(); refresh(); }}>{sim.chapter===0?'推开椅子，出去打 →':'走，去货场 →'}</button></div>
+        <span className="street-kicker">{script.intro.kicker}</span>
+        <h2>{script.intro.title}</h2>
+        <div className="street-lines">{script.intro.lines.map((line, i) => <p key={i}><b>{speaker(line.who, sim.role)}</b><span>{line.text}</span></p>)}</div>
+        <div className="street-tutorial"><span className="street-tutorial-tag">操作</span>{paragraphs(script.intro.tutorial)}</div>
+        <div className="street-actions-row"><button className="street-primary" onClick={() => { sim.proceed(); refresh(); }}>{script.intro.button}</button></div>
       </div></div>}
       {sim.phase === 'bossIntro' && <div className="street-overlay street-story"><div className="street-plate">
-        <span className="street-kicker danger">关底 / {sim.bossName}</span>
-        <h2>{sim.chapter===0 ? '「这条街，我说了算。」' : '「你回来一天，知道什么？」'}</h2>
-        <div className="street-lines"><p><b>{sim.bossName}</b><span>{sim.chapter===0 ? '「陆川现在吃黑桥的饭，轮得到你们管？」' : '「他没地方住的时候，是韩哥收留的。」'}</span></p><p><b>{HEROES[sim.role].name}</b><span>{sim.chapter===0 ? '「我们找他吃顿饭，不用你批。」' : '「所以现在，他连比赛都不能自己打？」'}</span></p></div>
-        <div className="street-tutorial"><span className="street-tutorial-tag">打法</span>{sim.chapter===0 ? <>红色预警后铁头会冲撞，上下走位或闪避躲开。<br/>冲撞结束，绿圈破绽开放1.2秒；此时攻击吃满伤害。</> : <>长腿蓄力后踢向前方，上下走位或闪避躲开。<br/>收腿后绿圈破绽开放0.95秒；窗口外只能造成25%伤害。</>}</div>
-        <div className="street-actions-row"><button className="street-primary" onClick={() => { sim.proceed(); refresh(); }}>那就让开。</button></div>
+        <span className="street-kicker danger">{bossScene.kicker}</span>
+        <h2>{bossScene.title}</h2>
+        <div className="street-lines">{bossScene.lines.map((line, i) => <p key={i}><b>{speaker(line.who, sim.role)}</b><span>{line.text}</span></p>)}</div>
+        <div className="street-tutorial"><span className="street-tutorial-tag">打法</span>{paragraphs(bossScene.tutorial)}</div>
+        <div className="street-actions-row"><button className="street-primary" onClick={() => { sim.proceed(); refresh(); }}>{bossScene.button}</button></div>
       </div></div>}
       {play && sim.paused && !trainingPanel && <div className="street-overlay street-story"><div className="street-plate">
         <span className="street-kicker">歇口气</span>
-        <h2>夜市还在等你。</h2>
+        <h2>{sim.training ? '练习场还在等你。' : `${sim.chapterName}还在等你。`}</h2>
         <div className="street-actions-row"><button className="street-primary" onClick={() => { unlock(); sim.paused = false; refresh(); }}>继续打</button></div>
         <div className="street-actions-row"><button className="street-secondary" onClick={() => { if (sim.training) sim.resetTraining(); else sim.start(sim.role, sim.chapter); refresh(); }}>重新挑战</button><button className="street-secondary" onClick={() => { sim.start(sim.role); sim.phase = 'select'; sim.paused = false; refresh(); }}>返回选人</button></div>
       </div></div>}
       {(sim.phase === 'won' || sim.phase === 'lost') && <div className="street-overlay street-story"><div className="street-plate">
-        <span className={`street-kicker ${sim.phase==='won' ? '' : 'danger'}`}>{sim.phase==='won' ? sim.chapterName+' / 完成' : '倒下了，再来一场'}</span>
-        <h2>{sim.phase==='won' ? (sim.chapter===0?'「给陆川留个座。」':'「他一直留着你们的合照。」') : '换个打法，再来。'}</h2>
+        <span className={`street-kicker ${sim.phase==='won' ? '' : 'danger'}`}>{sim.phase==='won' ? script.won.kicker : '倒下了，再来一场'}</span>
+        <h2>{sim.phase==='won' ? heroName(script.won.title) : '换个打法，再来。'}</h2>
         <div className="street-lines">
-          <p><span>{sim.phase==='won' ? (sim.chapter===0?'林夏：「手伸出来。别藏了，我看见了。」':'长腿：「搬了三次宿舍，都没扔。他现在在旧商场天桥。」') : '不要站在人堆里硬拼。跳跃躲投掷，抓投破围，绝招解围。'}</span></p>
-          <p><span>{sim.phase==='won' ? (sim.chapter===0?'阿拓：「走吧，去河边货场找他。」':'小满：「走。饭凉了可以热，人得叫回来。」') : '本场击倒 '+sim.kills+' 人。'}</span></p>
+          {sim.phase==='won'
+            ? script.won.lines.map((line, i) => <p key={i}><span>{heroName(line)}</span></p>)
+            : <><p><span>不要站在人堆里硬拼。跳跃躲投掷，抓投破围，绝招解围。</span></p><p><span>本场击倒 {sim.kills} 人。</span></p></>}
         </div>
-        {sim.phase==='won' && sim.chapter===1 && <div className="street-tutorial"><span className="street-tutorial-tag">待续</span>目前两章试玩到这里结束。下一站：天桥上的陆川。</div>}
+        {sim.phase==='won' && script.won.note && <div className="street-tutorial"><span className="street-tutorial-tag">待续</span>{script.won.note}</div>}
         <div className="street-actions-row">
-          {sim.phase==='won' && sim.chapter===0 && <button className="street-primary" onClick={() => { sim.nextChapter(); refresh(); }}>前往第二关 · 河边货场 →</button>}
-          <button className={sim.phase==='won' && sim.chapter===0?'street-secondary':'street-primary'} onClick={() => { if(sim.training)sim.resetTraining();else sim.start(sim.role,sim.chapter);refresh(); }}>重玩本关</button>
+          {sim.phase==='won' && script.won.nextLabel && <button className="street-primary" onClick={() => { sim.nextChapter(); refresh(); }}>{script.won.nextLabel}</button>}
+          <button className={sim.phase==='won' && script.won.nextLabel?'street-secondary':'street-primary'} onClick={() => { if(sim.training)sim.resetTraining();else sim.start(sim.role,sim.chapter);refresh(); }}>重玩本关</button>
         </div>
         <button className="street-secondary" onClick={() => { sim.start(sim.role);sim.phase='select';refresh(); }}>返回选人</button>
       </div></div>}

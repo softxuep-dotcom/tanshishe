@@ -27,9 +27,9 @@ const expose = (g, step = 1 / 120) => {
   assert.equal(g.isBossVulnerable(e), true); return e;
 };
 
-test('chapter totals stay at ten and eleven; each wave respects its cap and FIFO composition', () => {
-  assert.deepEqual(ENCOUNTERS.map(chapter => chapter.reduce((sum, wave) => sum + wave.enemies.length, 0)), [10, 11]);
-  for (const chapter of [0, 1]) for (const wave of [0, 1, 2]) {
+test('every chapter keeps its roster size; each wave respects its cap and FIFO composition', () => {
+  assert.deepEqual(ENCOUNTERS.map(chapter => chapter.reduce((sum, wave) => sum + wave.enemies.length, 0)), [10, 11, 12, 13]);
+  for (const chapter of [0, 1, 2, 3]) for (const wave of [0, 1, 2]) {
     const g = story(chapter, wave), definition = ENCOUNTERS[chapter][wave];
     assert.equal(g.enemies.length, definition.simultaneous);
     assert.equal(g.remainingEnemies, definition.enemies.length);

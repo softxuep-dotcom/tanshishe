@@ -149,7 +149,7 @@ test('night market completion leads to cargo chapter with same hero and clean st
 test('cargo chapter completes all encounters and longleg boss',()=>{
  const g=new StreetGame();g.start('chen',1);g.proceed();
  for(let wave=0;wave<3;wave++){ clearEncounter(g);g.mx=1;advance(g,7);g.mx=0; }
- assert.equal(g.phase,'bossIntro');g.proceed();assert.equal(g.enemies[0].kind,'longleg');assert.equal(g.crates.length,2);g.hit(g.enemies[0],9999,0);advance(g,1);assert.equal(g.phase,'won');g.nextChapter();assert.equal(g.chapter,1);assert.equal(g.phase,'won');
+ assert.equal(g.phase,'bossIntro');g.proceed();assert.equal(g.enemies[0].kind,'longleg');assert.equal(g.crates.length,2);g.hit(g.enemies[0],9999,0);advance(g,1);assert.equal(g.phase,'won');g.nextChapter();assert.equal(g.chapter,2);assert.equal(g.phase,'intro');
 });
 test('crate can be lifted, put down, and thrown with lane-specific splash and supply',()=>{
  const g=new StreetGame();g.startTraining('chen','tank',3);g.freezeEnemies=true;g.hero.x=143;g.hero.y=211;g.hero.face=1;
