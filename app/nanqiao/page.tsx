@@ -47,7 +47,7 @@ export default function StreetPage() {
   }
   const play = sim.phase === 'playing'; const boss = sim.enemies.find(e => e.kind === 'boss');
   return <main className="street-shell">
-    <div className="street-top"><a href="/">← 其他原型</a><span>南桥街 <em>／ 最后一场</em></span><button onClick={() => { setMuted(!muted); muteRef.current = !muted; }}>声音 {muted ? '关' : '开'}</button></div>
+    <div className="street-top"><span>第一章试玩</span><span>南桥街 <em>／ 最后一场</em></span><button onClick={() => { setMuted(!muted); muteRef.current = !muted; }}>声音 {muted ? '关' : '开'}</button></div>
     <section className="street-stage">
       <div ref={host} className="street-canvas" />
       {play && <><div className="street-hud"><div><strong>{HEROES[sim.role].name}</strong><span className="street-hp"><i style={{ width: `${sim.hero.hp / sim.hero.max * 100}%` }} /></span><small>HP {Math.ceil(sim.hero.hp)}　<span className="street-rage">怒气 {sim.rage}/100</span></small></div><div className="street-chapter">01 / 南桥夜市<small>{boss ? '躲开冲撞，抓住破绽' : `清场 ${Math.min(sim.wave + 1, 3)}/3 · 击倒 ${sim.kills}`}</small></div><button onClick={() => { sim.paused = true; sim.clearInput(); refresh(); }}>Ⅱ</button></div>{sim.combo > 1 && <div className="street-combo"><b>{sim.combo}</b> HITS</div>}</>}

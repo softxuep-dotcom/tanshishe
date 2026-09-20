@@ -1,48 +1,36 @@
-# 钩子搬运工 / Hook & Haul
+# 南桥街：最后一场
 
-手机与桌面浏览器的 Phaser 2D 玩法原型。首页是新搬运原型；此前的《拖车大逃亡》保留在 `/convoy`。
+手机网页优先。双击 `Publish-Game.cmd` 向 Codex 发起发布；部署成功后双击 `Play-Game.cmd` 试玩。详见 [发布说明](docs/PUBLISHING.md) 和 [美术基调](docs/ART_DIRECTION.md)。
+
+原创像素横版清关动作游戏原型。首页 `/` 直接进入游戏，旧试玩地址 `/nanqiao` 继续可用。
 
 ## 运行
 
-需要 Node 22.18+。安装依赖后运行 `npm run dev -- --host 0.0.0.0 --port 5173`。同一局域网的手机使用开发电脑的局域网 IP 和端口 5173；运行终端需要保持开启。线上试玩沿用现有 Sites 站点和访问权限。
+需要 Node.js 22.18+。首次运行 `npm install`，然后执行 `npm run dev -- --host 0.0.0.0 --port 5173`。
 
-## 怎么玩
+电脑打开 http://localhost:5173/；手机连接同一局域网，使用电脑的局域网 IP 和端口 5173，推荐横屏。
 
-- 按住货物牵引，松手脱钩。轻货主要靠近机器人，重货更多地拉动机器人。
-- 按住蓝色固定点移动机器人，从不同方向搬运货物。
-- 货物完整进入绿色区域且停稳后，点击装车。已就位货物仍能拉出来使用。
-- 第三关可以借重箱压门，也可从右侧绕路；门洞有人或货时暂缓关门。
-- 撤销免费；电脑按 Z 撤销、R 重来、Esc 暂停。
-- 通关与声音设置保存在本地；刷新后当前房间从头开始。存储不可用仍可玩。
+## 内容与操作
 
-## 三个房间
+三个可选角色：陈野、阿拓、小满。第一章包含三段街头清场、十个小兵和铁头 Boss，以及开场、Boss 前和结尾剧情。
 
-1. 第一份委托：一次拉动与停放。
-2. 换个角度：换位、绕过障碍、搬运不同重量货物。
-3. 先用，后搬：把重箱作为压板工具，再一起装车。
+WASD / 方向键移动，J 连打，K / 空格跳跃，L 近身抓投，I 消耗 50 怒气释放绝招，Esc 暂停。手机使用摇杆和四个动作按钮。
 
-## 工程与验证
+角色目前是程序绘制的像素样稿；后续章节、最终动画、存档、武器拾取和 Poki SDK 尚未实现。
 
-- `game/hook/simulation.ts`：固定步长模拟、质量差、碰撞、交付、压板门与完整撤销。
-- `game/hook/renderer.ts`：Phaser 场地、程序化精灵、直线钩索、指针输入和响应式缩放。
-- `app/page.tsx` / `app/hook.css`：HUD、暂停、结算、进度保存与声音。
-- `app/convoy/page.tsx` / `game/simulation.ts` / `game/renderer.ts`：保留的旧拖车原型。
+## 工程
 
-验证命令：
+- `app/page.tsx`：首页入口。
+- `app/nanqiao/`：游戏页面、操作、剧情和样式，同时兼容旧试玩地址。
+- `game/street/`：独立战斗模拟、Phaser 渲染和模拟测试。
+- `docs/NANQIAO_PROTOTYPE.md`：实现范围与原型边界。
+
+## 验证与构建
 
 ```sh
-node --test game/hook/simulation.test.mjs game/simulation.test.mjs
+node --experimental-strip-types --test game/street/simulation.test.mjs
 npx tsc --noEmit
 npm run build
 ```
 
-当前验证包括 11 项新模拟测试、12 项原有回归测试、浏览器触控通关、撤销、暂停、保存恢复、存储失败，以及五种尺寸和旋转屏幕检查。用户已在手机上通过三关，但认为操作缺少乐趣，当前暂停扩关。第二关货物目标提示已修正，详见试玩记录。全仓库 lint 存在原有组件及旧拖车代码告警；新增游戏源文件定向 lint 通过。
-
-原型尚未接入 Poki SDK、广告或完成平台审核。
-
-## 文档
-
-- [新游戏设计](docs/POKI_GAME_DESIGN.md)
-- [原型与试玩计划](docs/HOOK_MOVER_PROTOTYPE.md)
-- [本次实现和验证记录](docs/HOOK_MOVER_PLAYTEST.md)
-- [历史《车队劫持》方案](docs/CONVOY_HEIST_PLAN.md)
+静态产物位于 `dist/client`。本次清理未发布到远程站点。
