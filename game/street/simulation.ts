@@ -37,6 +37,7 @@ export class StreetGame {
   }
   setTrainingOpponents(kind: EnemyKind, count: number) {
     if (!this.training) return;
+    this.strike = null; this.chainTime = 0;
     this.trainingEnemy = kind; this.trainingCount = Math.max(1, Math.min(4, Math.floor(count) || 1));
     this.enemies = Array.from({ length: this.trainingCount }, (_, i) => this.fighter(kind, 255 + i * 42, 177 + i % 3 * 24, enemyHealth(kind)));
     this.restockCrates();
@@ -52,16 +53,35 @@ export class StreetGame {
   paused = false; role: Role = 'chen'; hero: Fighter; enemies: Fighter[] = []; sparks: Spark[] = [];
   time = 0; camera = 0; wave = 0; kills = 0; rage = 50; combo = 0; comboTime = 0; hitstop = 0; shake = 0;
   mx = 0; my = 0; held = false; serial = 0; attackStep = 0; events: string[] = []; food = false;
+  sprint = false;
+  private buffered: { action: Action; remaining: number } | null = null;
+  private strike: { delay: number; face: number; reach: number; damage: number; knockback: number } | null = null;
+  private chainTime = 0;
+  get windingUp() { return this.strike !== null; }
+  get running() { return this.sprint && Math.abs(this.mx) > .5 && !this.carried && !this.hero.jump && !this.hero.stun && !this.hero.timer; }
+  get grabTarget() {
+    const p = this.hero;
+    if (p.jump || p.stun || this.carried) return undefined;
+    return this.enemies.filter(e => e.hp > 0 && !isBoss(e.kind) && Math.abs(e.y - p.y) < 25 && Math.abs(e.x - p.x) < (this.role === 'tuo' ? 43 : 35))
+      .sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0];
+  }
+  requestAction(action: Action) {
+    if (this.phase !== 'playing' || this.paused) return;
+    if (this.hero.timer > 0 || this.hero.stun > 0 || this.hitstop > 0) {
+      this.buffered = { action, remaining: .18 };
+    } else this.action(action);
+  }
   constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
   fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, jump: 0, vx: 0, wind: 0, charge: 0, dead: 0 }; }
   start(role: Role, chapter: 0 | 1 = 0) {
+    this.strike = null; this.chainTime = 0;
     this.chapter = chapter; this.crates = []; this.carried = null; this.shots = []; this.snacks = [];
     this.training = false; this.godMode = false; this.freezeEnemies = false; this.showRanges = false; this.events = [];
     this.role = role; this.hero = this.fighter(role, 85, 199, role === 'tuo' ? 180 : 150); this.hero.timer = 0;
     this.enemies = []; this.sparks = []; this.phase = 'intro'; this.paused = false; this.time = 0; this.camera = 0; this.wave = 0;
     this.kills = 0; this.rage = 50; this.combo = 0; this.comboTime = 0; this.hitstop = 0; this.shake = 0; this.attackStep = 0; this.food = false; this.clearInput();
   }
-  clearInput() { this.mx = 0; this.my = 0; this.held = false; }
+  clearInput() { this.mx = 0; this.my = 0; this.held = false; this.sprint = false; this.buffered = null; }
   proceed() { if (this.phase === 'intro') { this.phase = 'playing'; this.spawn(); } else if (this.phase === 'bossIntro') { this.phase = 'playing'; this.enemies.push(this.fighter(this.chapter === 1 ? 'longleg' : 'boss', 1215, 197, 330)); if (this.chapter === 1) { this.restockCrates(); this.crates.forEach(c => c.x += 140); } } }
   spawn() {
     const x = this.wave * 410;
@@ -69,7 +89,7 @@ export class StreetGame {
     (kinds[this.wave] || []).forEach((k, i) => this.enemies.push(this.fighter(k, x + 230 + i * 49, 174 + (i % 3) * 26, enemyHealth(k))));
     this.restockCrates();
   }
-  action(a: Action) {
+  action(a: Action, fresh = true) {
     if (this.phase !== 'playing' || this.paused) return;
     const p = this.hero;
     if (p.stun > 0 || p.timer > 0) return;
@@ -83,8 +103,11 @@ export class StreetGame {
       if (a === 'special') this.dropCrate();
     }
     if (a === 'jump') { if (p.jump <= 0) { p.jump = .7; p.pose = 'jump'; p.poseTime = .7; this.events.push('jump'); } return; }
-    const nearby = this.enemies.filter(e => e.hp > 0 && Math.abs(e.y - p.y) < 21 && Math.abs(e.x - p.x) < 52).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x));
-    if (nearby[0]) p.face = nearby[0].x >= p.x ? 1 : -1;
+    const dash = a === 'attack' && fresh && this.running;
+    if (Math.abs(this.mx) > .2) p.face = Math.sign(this.mx);
+    const nearby = this.enemies.filter(e => e.hp > 0 && Math.abs(e.y - p.y) < 25 && Math.abs(e.x - p.x) < 52).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x));
+    // Aim assist helps standing attacks, but never overrides deliberate movement.
+    if (!dash && Math.abs(this.mx) <= .2 && nearby[0]) p.face = nearby[0].x >= p.x ? 1 : -1;
     if (a === 'special') {
       if (this.rage < 50) { this.sparks.push({ x: p.x, y: p.y - 63, life: .6, text: '怒气不足' }); return; }
       this.rage -= 50; p.inv = .8; p.timer = .7; p.pose = 'special'; p.poseTime = .65;
@@ -92,36 +115,54 @@ export class StreetGame {
       this.shake = .3; this.events.push('special'); return;
     }
     if (a === 'throw') {
-      const e = nearby.find(e => Math.abs(e.x - p.x) < (this.role === 'tuo' ? 43 : 32) && !isBoss(e.kind));
-      p.timer = .4;
+      if (p.jump > 0) return;
+      const e = this.grabTarget;
       if (!e) {
         const c = this.crates.filter(c => Math.abs(c.x - p.x) < 35 && Math.abs(c.y - p.y) < 23).sort((a,b) => Math.abs(a.x-p.x)-Math.abs(b.x-p.x))[0];
-        if (c && !p.jump) { this.carried = c; this.crates = this.crates.filter(o => o !== c); this.events.push('heal'); }
+        if (c && !p.jump) { this.carried = c; this.crates = this.crates.filter(o => o !== c); p.timer = .2; this.events.push('heal'); }
         else this.sparks.push({ x: p.x, y: p.y - 65, life: .65, text: '靠近小兵或木箱' }); return;
       }
-      p.pose = 'throw'; p.poseTime = .4; this.hit(e, this.role === 'tuo' ? 42 : 29, p.face * 350); e.pose = 'thrown'; e.poseTime = .7; e.stun = .75;
+      p.face = Math.abs(this.mx) > .2 ? Math.sign(this.mx) : (e.x >= p.x ? 1 : -1);
+      p.timer = .36; p.inv = Math.max(p.inv, .22);
+      p.pose = 'throw'; p.poseTime = .36; this.hit(e, this.role === 'tuo' ? 42 : 29, p.face * 350); e.pose = 'thrown'; e.poseTime = .7; e.stun = .75;
       for (const other of this.enemies) if (other !== e && other.hp > 0 && (other.x - e.x) * p.face > 0 && Math.abs(other.x - e.x) < 130 && Math.abs(other.y - e.y) < 30) this.hit(other, 25, p.face * 185);
       this.events.push('throw'); return;
     }
-    this.attackStep = this.comboTime > 0 ? (this.attackStep + 1) % 3 : 0;
-    p.pose = p.jump > 0 ? 'kick' : this.attackStep === 2 ? 'uppercut' : 'punch'; p.poseTime = .22;
-    p.timer = this.role === 'man' ? .23 : this.role === 'tuo' ? .39 : .29;
+    this.attackStep = this.chainTime > 0 ? (this.attackStep + 1) % 3 : 0;
+    this.chainTime = .65;
+    const heavy = dash || this.attackStep === 2 || p.jump > 0;
+    p.pose = dash ? 'dash' : p.jump > 0 ? 'kick' : this.attackStep === 2 ? 'uppercut' : 'punch';
+    p.timer = dash ? .43 : this.role === 'man' ? .22 : this.role === 'tuo' ? .34 : .27;
+    p.poseTime = p.timer;
+    if (dash) p.vx = p.face * 240;
+    this.strike = { delay: dash ? .065 : .05, face: p.face, reach: dash ? 65 : p.jump > 0 ? 63 : 48,
+      damage: HEROES[this.role].damage * (heavy ? 1.6 : 1), knockback: dash ? 220 : this.attackStep === 2 ? 185 : 38 };
+    this.events.push('swing');
+  }
+  private resolveStrike() {
+    const strike = this.strike;
+    if (!strike) return;
+    this.strike = null;
+    const p = this.hero;
     let landed = false;
-    for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.y - p.y) < 23 && (e.x - p.x) * p.face > -9 && (e.x - p.x) * p.face < (p.jump > 0 ? 63 : 48)) {
-      this.hit(e, HEROES[this.role].damage * (this.attackStep === 2 || p.jump > 0 ? 1.6 : 1), p.face * (this.attackStep === 2 ? 185 : 45)); landed = true;
+    for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.y - p.y) < 23 && (e.x - p.x) * strike.face > -9 && (e.x - p.x) * strike.face < strike.reach) {
+      this.hit(e, strike.damage, strike.face * strike.knockback); landed = true;
     }
-    if (!landed) this.events.push('swing');
+    if (landed && strike.knockback > 100) this.events.push('heavy');
   }
   hit(e: Fighter, damage: number, velocity: number) {
     if (e.hp <= 0) return;
     e.hp = Math.max(0, e.hp - damage); e.stun = isBoss(e.kind) ? .16 : .3; e.wind = 0; e.charge = 0; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
-    this.combo++; this.comboTime = 2; this.rage = Math.min(100, this.rage + 5); this.hitstop = .045; this.shake = .12;
+    this.combo++; this.comboTime = 2; this.rage = Math.min(100, this.rage + 5);
+    this.hitstop = Math.max(this.hitstop, Math.abs(velocity) > 100 ? .075 : .035);
+    this.shake = Math.max(this.shake, Math.abs(velocity) > 100 ? .16 : .065);
     this.sparks.push({ x: e.x, y: e.y - 28, life: .33, text: String(Math.round(damage)) }); this.events.push('hit');
     if (!e.hp) { e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5); }
   }
   hurt(damage: number, face: number) {
     const p = this.hero; if ((this.training && this.godMode) || p.inv > 0 || p.jump > .12) return;
     this.dropCrate();
+    this.strike = null; this.buffered = null; this.chainTime = 0;
     p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
     this.combo = 0; this.shake = .2; this.events.push('hurt'); if (!p.hp) { this.phase = 'lost'; this.clearInput(); }
   }
@@ -130,6 +171,8 @@ export class StreetGame {
     const dt = Math.min(delta, .035); this.time += dt; this.shake = Math.max(0, this.shake - dt);
     this.sparks = this.sparks.filter(s => (s.life -= dt) > 0);
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
+    this.chainTime = Math.max(0, this.chainTime - dt);
+    if (this.buffered) { this.buffered.remaining -= dt; if (this.buffered.remaining <= 0) this.buffered = null; }
     this.comboTime = Math.max(0, this.comboTime - dt); if (!this.comboTime) this.combo = 0;
     for (const f of [this.hero, ...this.enemies]) {
       f.timer = Math.max(0, f.timer - dt); f.stun = Math.max(0, f.stun - dt); f.inv = Math.max(0, f.inv - dt); f.jump = Math.max(0, f.jump - dt);
@@ -137,11 +180,15 @@ export class StreetGame {
       f.x += f.vx * dt; f.vx *= Math.exp(-7 * dt); f.dead = Math.max(0, f.dead - dt);
     }
     const p = this.hero; const alive = this.enemies.filter(e => e.hp > 0);
+    if (this.strike) { this.strike.delay -= dt; if (this.strike.delay <= 0) this.resolveStrike(); }
     if (!p.stun) {
       const len = Math.max(1, Math.hypot(this.mx, this.my));
-      p.x += this.mx / len * HEROES[this.role].speed * dt * (p.timer > 0 ? .45 : 1) * (this.carried ? .75 : 1); p.y += this.my / len * 61 * dt;
+      const movement = p.timer > 0 ? (p.jump > 0 ? .8 : .25) : 1;
+      p.x += this.mx / len * HEROES[this.role].speed * dt * movement * (this.running ? 1.65 : 1) * (this.carried ? .75 : 1);
+      p.y += this.my / len * 61 * dt * movement;
       if (this.mx && p.timer <= 0) p.face = this.mx > 0 ? 1 : -1;
-      if (this.held) this.action('attack');
+      if (this.buffered && p.timer <= 0) { const input = this.buffered; this.buffered = null; this.action(input.action); }
+      else if (this.held) this.action('attack', false);
     }
     const right = this.wave === 0 ? 455 : this.wave === 1 ? 865 : 1300;
     const left = Math.min(this.wave, 2) * 410;

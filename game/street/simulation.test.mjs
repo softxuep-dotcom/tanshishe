@@ -5,7 +5,7 @@ const advance = (g, secs) => { for(let t=0;t<secs;t+=1/120) g.update(1/120); };
 const start = (role='chen') => { const g=new StreetGame();g.start(role);g.proceed();return g; };
 test('punch only hits enemies in range and lane; pause blocks combat',()=>{
  const g=start(); const [a,b]=g.enemies; a.x=g.hero.x+28;a.y=g.hero.y;b.x=g.hero.x+25;b.y=g.hero.y+45;
- g.action('attack');assert.ok(a.hp<a.max);assert.equal(b.hp,b.max);
+ g.action('attack');assert.equal(a.hp,a.max);advance(g,.07);assert.ok(a.hp<a.max);assert.equal(b.hp,b.max);
  const hp=a.hp;g.paused=true;advance(g,2);g.action('special');assert.equal(a.hp,hp);assert.equal(g.rage,55);
 });
 test('throw damages the target and enemies behind it, not distant enemies',()=>{
@@ -45,7 +45,7 @@ test('training stays in arena after all enemies die and resets without story',()
 });
 test('training freeze stops enemy decisions but enemies can still be hit',()=>{
  const g=new StreetGame();g.startTraining('chen','punk',1);g.freezeEnemies=true;const e=g.enemies[0];const x=e.x;advance(g,2);assert.equal(e.x,x);assert.equal(e.wind,0);
- e.x=g.hero.x+25;e.y=g.hero.y;g.action('attack');assert.ok(e.hp<e.max);
+ e.x=g.hero.x+25;e.y=g.hero.y;g.action('attack');advance(g,.07);assert.ok(e.hp<e.max);
 });
 
 test('night market completion leads to cargo chapter with same hero and clean state',()=>{

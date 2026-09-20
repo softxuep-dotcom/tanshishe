@@ -27,23 +27,25 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       this.labels.forEach(t => t.destroy()); this.labels = []; const g = this.ink; g.clear();
       const r = (x: number, y: number, w: number, h: number, c: number, a = 1) => { g.fillStyle(c, a); g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
       const offset = sim.shake > 0 ? Math.sin(sim.time * 137) * sim.shake * 11 : 0;
-      const camera = sim.phase === 'select' ? 0 : sim.camera;
-      r(0, 0, 480, 270, 0x172331); r(0, 34, 480, 70, 0x24384a);
+      const width = this.scale.gameSize.width;
+      // Expand the scenery, not the fighters or the combat bounds, on wide phones.
+      const camera = (sim.phase === 'select' ? 0 : sim.camera) - (width - 480) / 2;
+      r(0, 0, width, 270, 0x172331); r(0, 34, width, 70, 0x24384a);
       r(377 - camera * .07, 26, 22, 22, 0xebc68c); r(373 - camera * .07, 22, 19, 20, 0x172331);
-      for (let i = 0; i < 15; i++) {
+      for (let i = -1; i < Math.ceil(width / 47) + 1; i++) {
         const x = i * 47 - camera * .17 % 47; const h = 37 + (i * 17 % 44);
         r(x, 111 - h, 39, h, 0x1b2b3e); for (let j = 0; j < 3; j++) r(x + 8 + j * 10, 120 - h, 3, 5, 0x9a865d, .55);
       }
-      r(0, 150, 480, 120, 0x343946); r(0, 154, 480, 5, 0x7a6460); r(0, 160, 480, 3, 0x242a35);
+      r(0, 150, width, 120, 0x343946); r(0, 154, width, 5, 0x7a6460); r(0, 160, width, 3, 0x242a35);
       for (let i = 0; i < 36; i++) { const x = i * 45 - camera % 45; r(x, 196, 25, 1, 0x52515b); r(x + 15, 235, 29, 1, 0x52515b); }
-      r(0, 255, 480, 15, 0x242733); for (let i = 0; i < 12; i++) r(i * 50 - camera % 50, 257, 29, 2, 0x7b6753);
+      r(0, 255, width, 15, 0x242733); for (let i = -1; i < Math.ceil(width / 50) + 1; i++) r(i * 50 - camera % 50, 257, 29, 2, 0x7b6753);
       const signs = ['满记饭馆', '南桥修车', '街机游戏厅', '桥下拳馆', '黑桥赛事'];
-      for (let i = 0; sim.chapter === 0 && i < 8; i++) {
-        const x = i * 182 - camera + offset; if (x < -190 || x > 480) continue;
-        const color = [0x675057, 0x45515a, 0x4f5552][i % 3]; r(x, 51, 178, 103, color); r(x, 50, 178, 5, 0x9b7a68);
+      for (let i = -6; sim.chapter === 0 && i < 16; i++) {
+        const x = i * 182 - camera + offset; if (x < -190 || x > width) continue;
+        const color = [0x675057, 0x45515a, 0x4f5552][((i % 3) + 3) % 3]; r(x, 51, 178, 103, color); r(x, 50, 178, 5, 0x9b7a68);
         for (let k = 0; k < 5; k++) { r(x, 75 + k * 16, 178, 1, 0x242c39, .3); r(x + k * 35, 51, 1, 103, 0x242c39, .2); }
         r(x + 10, 66, 154, 30, 0x252b38); r(x + 12, 68, 150, 2, i % 2 ? 0x71c6b2 : 0xeaa86c);
-        this.label(x + 35, 73, signs[i % 5], 15, i % 2 ? '#8adcc5' : '#ffd18d');
+        this.label(x + 35, 73, signs[((i % 5) + 5) % 5], 15, i % 2 ? '#8adcc5' : '#ffd18d');
         r(x + 17, 104, 58, 46, 0x222b36); r(x + 21, 108, 50, 38, 0x897260); r(x + 43, 106, 3, 44, 0x302e35);
         r(x + 90, 101, 65, 49, 0x283440); for (let z = 0; z < 8; z++) r(x + 92, 104 + z * 6, 61, 2, 0x586268);
         if (i % 2 === 0) { for (let j = 0; j < 8; j++) r(x + 4 + j * 21, 98, 21, 8, j % 2 ? 0xb36b58 : 0xd5bc8b); }
@@ -51,20 +53,20 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         r(x + 169, 52, 14, 18, 0xb9544b); r(x + 174, 52, 4, 18, 0xf0a461); r(x + 175, 70, 2, 6, 0xe2a364);
       }
       if (sim.chapter === 1) {
-        r(0,78,480,70,0x233f4a);
-        for(let i=0;i<16;i++) r((i*41+sim.time*5-camera*.2)%500,102+i%4*9,20,1,0x567a79,.6);
-        for(let i=0;i<6;i++) {
+        r(0,78,width,70,0x233f4a);
+        for(let i=0;i<Math.ceil(width/41)+2;i++) r(((i*41+sim.time*5-camera*.2)%(width+40)+width+40)%(width+40)-20,102+i%4*9,20,1,0x567a79,.6);
+        for(let i=-6;i<16;i++) {
           const x=i*242-camera*.65; r(x,38,6,99,0x344853);r(x,38,112,6,0x617679);r(x+92,44,2,47,0x758483);r(x+84,91,18,8,0xbc945c);
           r(x+8,110,111,25,0x192c39);r(x+30,99,28,11,0x354b55);
         }
-        for(let i=0;i<6;i++) {
+        for(let i=-6;i<16;i++) {
           const x=i*218-camera; const color=i%2?0x596560:0x565563;
           r(x,82,153,71,color);r(x,81,153,5,0x96a28c);
           for(let k=0;k<13;k++)r(x+6+k*11,88,2,62,0x263c44,.5);
-          r(x+44,101,72,22,0x293e49);this.label(x+54,106,['河岸货运','黑桥训练','装卸二区'][i%3],11,'#d8c38e');
+          r(x+44,101,72,22,0x293e49);this.label(x+54,106,['河岸货运','黑桥训练','装卸二区'][((i%3)+3)%3],11,'#d8c38e');
           r(x+165,88,4,65,0x82908b);r(x+157,85,20,5,0xffd492);r(x+149,90,36,57,0xffd492,.06);
         }
-        r(0,150,480,5,0xd0b179);
+        r(0,150,width,5,0xd0b179);
         for(let i=0;i<35;i++)r(i*23-camera%23,150,12,5,0x303b43);
       }
       // Foreground street props remain outside the combat lane.
@@ -99,15 +101,21 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       }
       if (sim.phase === 'playing' && sim.time < 9) this.label(100, 250, sim.chapter===1?'靠近木箱按抓投 · 攻击扔出 · 绿标箱内有补给':'连打清兵 · 靠近抓投 · 跳跃躲攻击', 9);
       const boss = live.find(e => isBoss(e.kind));
-      if (boss) { r(144, 42, 192, 4, 0x261f2a); r(144, 42, 192 * boss.hp / boss.max, 4, 0xd4635a); this.label(215, 48, boss.kind==='longleg'?'长 腿':'铁 头', 9, '#eaa086'); }
+      if (boss) { r(width / 2 - 96, 42, 192, 4, 0x261f2a); r(width / 2 - 96, 42, 192 * boss.hp / boss.max, 4, 0xd4635a); this.label(width / 2 - 25, 48, boss.kind==='longleg'?'长 腿':'铁 头', 9, '#eaa086'); }
     }
     person(f: Fighter, x: number, ground: number) {
       const g = this.ink; const isHero = f === sim.hero; const big = f.kind === 'boss' || f.kind === 'tank' || f.kind === 'tuo';
       const jump = f.jump > 0 ? Math.sin(f.jump / .7 * Math.PI) * 33 : 0;
       const moving = isHero ? Math.hypot(sim.mx, sim.my) > .1 : f.timer < .9 && f.stun <= 0;
-      const stride = moving && f.pose === 'idle' ? Math.sin(sim.time * 13 + f.id) * 5 : 0;
+      const stride = moving && f.pose === 'idle' ? Math.sin(sim.time * (isHero && sim.running ? 21 : 13) + f.id) * (isHero && sim.running ? 7 : 5) : 0;
       const y = ground - jump - (f.kind==='longleg'?5:0); const w = big ? 24 : 17; const face = f.face;
       let shirt = isHero ? HEROES[sim.role].color : f.kind === 'longleg' ? 0x6ec9bd : f.kind === 'slinger' ? 0x7797af : f.kind === 'boss' ? 0xb54f48 : f.kind === 'runner' ? 0x9981b0 : f.kind === 'tank' ? 0x6f8a73 : 0x74849b;
+      if (f.pose === 'hurt' && f.poseTime > .15) shirt = 0xffe9c6;
+      if (isHero && (sim.running || f.pose === 'dash')) {
+        g.lineStyle(2, 0xe9c282, .45);
+        g.lineBetween(x - face * 15, ground - 22, x - face * 35, ground - 22);
+        g.lineBetween(x - face * 18, ground - 12, x - face * 43, ground - 12);
+      }
       if (f.pose === 'hurt') shirt = 0xf5e4bd;
       const alpha = f.hp <= 0 ? f.dead / .65 : isHero && f.inv > 0 && Math.floor(sim.time * 18) % 2 ? .45 : 1;
       g.fillStyle(0x0c1523, .4); g.fillEllipse(x, ground + 1, big ? 38 : 28, 9);
@@ -124,9 +132,11 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if(f.kind==='slinger'){r(-9,-58,18,8,0xbea15d);r(7,-53,9,3,0xbea15d);r(-12,-17,9,12,0x9a7753);}
       if(f.kind==='longleg')r(-8,-52,18,3,0xe88966);
       if (big) { r(-7, -41, 15, 3, 0x3e3031); r(-11, -33, 7, 17, 0xdba077); }
-      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge'].includes(f.pose);
+      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash'].includes(f.pose);
       r(-w / 2 - 4, -32, 6, 14, shirt); r(-w / 2 - 4, -20, 6, 7, 0xe0ab80);
-      if (attack) {
+      if (attack && isHero && sim.windingUp) {
+        r(3, -35, 10, 7, shirt); r(9, -39, 8, 9, 0xe0ab80);
+      } else if (attack) {
         if (f.pose === 'kick') { r(7, -20, f.kind==='longleg'?82:24, 8, 0x344b5b); r(f.kind==='longleg'?87:28, -21, 9, 10, 0xe4c58e); }
         else if (f.pose === 'uppercut') { r(10, -41, 7, 14, shirt); r(11, -51, 9, 11, 0xe0ab80); }
         else { r(8, -33, 21, 7, shirt); r(27, -35, 9, 10, 0xe0ab80); }
@@ -137,5 +147,14 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if (isHero) { g.fillStyle(HEROES[sim.role].color); g.fillTriangle(x - 4, y - 67, x + 4, y - 67, x, y - 63); }
     }
   }
-  return new Phaser.Game({ type: Phaser.AUTO, width: 480, height: 270, parent, backgroundColor: '#172331', pixelArt: true, antialias: false, audio: { noAudio: true }, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: StreetScene, banner: false });
+  const viewportWidth = () => Math.max(480, Math.min(1440, Math.round(270 * parent.clientWidth / Math.max(1, parent.clientHeight))));
+  const game = new Phaser.Game({ type: Phaser.AUTO, width: viewportWidth(), height: 270, parent, backgroundColor: '#172331', pixelArt: true, antialias: false, audio: { noAudio: true }, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: StreetScene, banner: false });
+  const resize = new ResizeObserver(() => {
+    const width = viewportWidth();
+    if (game.scale.gameSize.width !== width) game.scale.setGameSize(width, 270);
+    game.scale.refresh();
+  });
+  game.events.once(Phaser.Core.Events.READY, () => resize.observe(parent));
+  game.events.once(Phaser.Core.Events.DESTROY, () => resize.disconnect());
+  return game;
 }
