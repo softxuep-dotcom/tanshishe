@@ -121,6 +121,17 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       g.fillStyle(0x0c1523, .4); g.fillEllipse(x, ground + 1, big ? 38 : 28, 9);
       const r = (a: number, b: number, c: number, d: number, color: number) => { g.fillStyle(color, alpha); g.fillRect(Math.round(x + (face === 1 ? a : -a - c)), Math.round(y + b), c, d); };
       if (f.hp <= 0 || f.pose === 'thrown') { r(-20, -12, 32, 12, shirt); r(12, -13, 11, 12, 0xdfa77d); r(-27, -10, 9, 8, 0x1b2635); return; }
+      if (f.pose === 'dodge') {
+        // Low defensive silhouette, distinct from the forward dash attack.
+        g.lineStyle(2, 0x9edbd5, .55);
+        g.strokeEllipse(x, ground, 42, 10);
+        r(-14, -29, w + 5, 17, shirt);
+        r(-12, -45, 16, 16, 0xe0ab80); r(-13, -46, 17, 5, 0x282832);
+        r(3, -30, 8, 8, 0xe0ab80);
+        r(-17, -13, 9, 13, 0x263749); r(1, -13, 17, 8, 0x344b5b);
+        r(-20, -4, 12, 4, 0x171f2a); r(12, -6, 12, 4, 0x171f2a);
+        return;
+      }
       if (f.wind > 0) { g.lineStyle(2, 0xfaa36e, .9); g.strokeEllipse(x, ground + 1, 43, 13); this.label(x - 3, y - 68, '!', 17, '#ffbe76'); if (f.kind === 'boss') { g.fillStyle(0xee6356, .17); g.fillRect(face > 0 ? x : x - 155, ground - 12, 155, 25); } }
       if(f.kind==='longleg' && f.wind>0){g.fillStyle(0xffaa64,.2);g.fillRect(face>0?x:x-105,ground-24,105,48);this.label(x-20,y-83,'长踢预警',8,'#ffd88e');}
       if (f.pose === 'special') { g.lineStyle(5, HEROES[sim.role].color, .7); g.strokeEllipse(x, y - 25, 110 + Math.sin(sim.time * 40) * 10, 55); }

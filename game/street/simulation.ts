@@ -1,6 +1,6 @@
 export type Role = 'chen' | 'tuo' | 'man';
 export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss' | 'slinger' | 'longleg';
-export type Action = 'attack' | 'jump' | 'throw' | 'special';
+export type Action = 'attack' | 'jump' | 'throw' | 'special' | 'dodge';
 export type EnemyKind = Exclude<Kind, Role>;
 export const isBoss = (kind: Kind) => kind === 'boss' || kind === 'longleg';
 export const enemyHealth = (kind: Kind) => isBoss(kind) ? 330 : kind === 'tank' ? 86 : kind === 'runner' || kind === 'slinger' ? 42 : 52;
@@ -54,6 +54,8 @@ export class StreetGame {
   time = 0; camera = 0; wave = 0; kills = 0; rage = 50; combo = 0; comboTime = 0; hitstop = 0; shake = 0;
   mx = 0; my = 0; held = false; serial = 0; attackStep = 0; events: string[] = []; food = false;
   sprint = false;
+  dodgeCooldown = 0;
+  private dodgeMotion: { x: number; y: number; remaining: number } | null = null;
   private buffered: { action: Action; remaining: number } | null = null;
   private strike: { delay: number; face: number; reach: number; damage: number; knockback: number } | null = null;
   private chainTime = 0;
@@ -74,6 +76,7 @@ export class StreetGame {
   constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
   fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, jump: 0, vx: 0, wind: 0, charge: 0, dead: 0 }; }
   start(role: Role, chapter: 0 | 1 = 0) {
+    this.dodgeMotion = null; this.dodgeCooldown = 0;
     this.strike = null; this.chainTime = 0;
     this.chapter = chapter; this.crates = []; this.carried = null; this.shots = []; this.snacks = [];
     this.training = false; this.godMode = false; this.freezeEnemies = false; this.showRanges = false; this.events = [];
@@ -93,6 +96,18 @@ export class StreetGame {
     if (this.phase !== 'playing' || this.paused) return;
     const p = this.hero;
     if (p.stun > 0 || p.timer > 0) return;
+    if (a === 'dodge') {
+      if (p.jump > 0 || this.carried || this.dodgeCooldown > 0) return;
+      const length = Math.hypot(this.mx, this.my);
+      // Commit to the initial direction; neutral input retreats without turning.
+      const x = length > .2 ? this.mx / length : -p.face;
+      const y = length > .2 ? this.my / length : 0;
+      this.dodgeMotion = { x: x * 240, y: y * 170, remaining: .18 };
+      this.dodgeCooldown = .55; this.chainTime = 0; this.strike = null;
+      p.vx = 0; p.timer = .34; p.pose = 'dodge'; p.poseTime = .34;
+      p.inv = Math.max(p.inv, .18);
+      this.events.push('dodge'); return;
+    }
     if (this.carried) {
       if (a === 'attack') {
         this.shots.push({ x: p.x + p.face * 20, y: p.y, vx: p.face * 250, life: 1.3, crate: true, snack: this.carried.snack });
@@ -162,6 +177,7 @@ export class StreetGame {
   hurt(damage: number, face: number) {
     const p = this.hero; if ((this.training && this.godMode) || p.inv > 0 || p.jump > .12) return;
     this.dropCrate();
+    this.dodgeMotion = null;
     this.strike = null; this.buffered = null; this.chainTime = 0;
     p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
     this.combo = 0; this.shake = .2; this.events.push('hurt'); if (!p.hp) { this.phase = 'lost'; this.clearInput(); }
@@ -171,6 +187,13 @@ export class StreetGame {
     const dt = Math.min(delta, .035); this.time += dt; this.shake = Math.max(0, this.shake - dt);
     this.sparks = this.sparks.filter(s => (s.life -= dt) > 0);
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
+    this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
+    if (this.dodgeMotion) {
+      const step = Math.min(dt, this.dodgeMotion.remaining);
+      this.hero.x += this.dodgeMotion.x * step; this.hero.y += this.dodgeMotion.y * step;
+      this.dodgeMotion.remaining -= dt;
+      if (this.dodgeMotion.remaining <= 0) this.dodgeMotion = null;
+    }
     this.chainTime = Math.max(0, this.chainTime - dt);
     if (this.buffered) { this.buffered.remaining -= dt; if (this.buffered.remaining <= 0) this.buffered = null; }
     this.comboTime = Math.max(0, this.comboTime - dt); if (!this.comboTime) this.combo = 0;
@@ -183,7 +206,7 @@ export class StreetGame {
     if (this.strike) { this.strike.delay -= dt; if (this.strike.delay <= 0) this.resolveStrike(); }
     if (!p.stun) {
       const len = Math.max(1, Math.hypot(this.mx, this.my));
-      const movement = p.timer > 0 ? (p.jump > 0 ? .8 : .25) : 1;
+      const movement = p.pose === 'dodge' ? 0 : p.timer > 0 ? (p.jump > 0 ? .8 : .25) : 1;
       p.x += this.mx / len * HEROES[this.role].speed * dt * movement * (this.running ? 1.65 : 1) * (this.carried ? .75 : 1);
       p.y += this.my / len * 61 * dt * movement;
       if (this.mx && p.timer <= 0) p.face = this.mx > 0 ? 1 : -1;

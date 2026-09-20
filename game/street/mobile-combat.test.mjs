@@ -5,6 +5,41 @@ import { DoublePushRun, readStick } from './touch-input.ts';
 const advance = (g, seconds) => { for (let t=0;t<seconds;t+=1/120) g.update(1/120); };
 const game = () => { const g=new StreetGame();g.startTraining('chen','tank',1);g.freezeEnemies=true;g.enemies[0].x=g.hero.x+28;g.enemies[0].y=g.hero.y;return g; };
 
+test('neutral dodge retreats, keeps facing, costs no rage and does not attack',()=>{
+ for (const face of [-1,1]) {
+  const g=game();g.hero.x=220;g.hero.face=face;const hp=g.enemies[0].hp;
+  g.requestAction('dodge');assert.equal(g.hero.pose,'dodge');advance(g,.2);
+  assert.ok(Math.abs(g.hero.x-(220-face*43.2))<.01);
+  assert.equal(g.hero.face,face);assert.equal(g.rage,50);assert.equal(g.enemies[0].hp,hp);
+ }
+});
+test('directional dodge commits to its initial direction and respects arena bounds',()=>{
+ const g=game();g.mx=1;g.my=1;g.requestAction('dodge');g.mx=-1;g.my=-1;
+ advance(g,.2);assert.ok(g.hero.x>110);assert.ok(g.hero.y>215);
+ const edge=game();edge.hero.x=22;edge.hero.y=157;edge.mx=-1;edge.my=-1;
+ edge.requestAction('dodge');advance(edge,.2);assert.equal(edge.hero.x,22);assert.equal(edge.hero.y,157);
+});
+test('dodge avoids damage briefly but recovery is vulnerable and cannot be spammed',()=>{
+ const g=game();g.godMode=false;g.requestAction('dodge');g.hurt(10,1);
+ assert.equal(g.hero.hp,g.hero.max);advance(g,.2);g.hurt(10,1);
+ assert.equal(g.hero.hp,g.hero.max-10);
+ const h=game();h.requestAction('dodge');advance(h,.36);h.requestAction('dodge');
+ assert.equal(h.hero.pose,'idle');advance(h,.21);h.requestAction('dodge');assert.equal(h.hero.pose,'dodge');
+});
+test('dodge rejects air, carrying, stun and pause, and restart clears cooldown',()=>{
+ for(const setup of [g=>g.hero.jump=.4,g=>g.carried={id:99,x:0,y:0,snack:false},g=>g.hero.stun=.4,g=>g.paused=true]) {
+  const g=game();setup(g);g.requestAction('dodge');assert.notEqual(g.hero.pose,'dodge');assert.equal(g.dodgeCooldown,0);
+ }
+ const g=game();g.requestAction('dodge');g.startTraining('chen');assert.equal(g.dodgeCooldown,0);
+ advance(g,.1);assert.equal(g.hero.x,85);
+});
+test('dodge buffers after attacks, allows follow-up attack and pauses with the simulation',()=>{
+ const g=game();g.hero.timer=.1;g.requestAction('dodge');advance(g,.12);assert.equal(g.hero.pose,'dodge');
+ const x=g.hero.x,cooldown=g.dodgeCooldown;g.paused=true;advance(g,1);
+ assert.equal(g.hero.x,x);assert.equal(g.dodgeCooldown,cooldown);g.paused=false;
+ advance(g,.19);g.requestAction('attack');advance(g,.16);assert.equal(g.hero.pose,'punch');
+});
+
 test('stick filters drift and retains analog walking without automatic outer-ring sprint',()=>{
  assert.equal(readStick(3,2,50).x,0);
  assert.ok(readStick(35,0,50).x>0);

@@ -51,11 +51,11 @@ export default function StreetPage() {
     const move = () => { sim.mx = Number(keys.has('d') || keys.has('arrowright')) - Number(keys.has('a') || keys.has('arrowleft')); sim.my = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup')); sim.sprint = keys.has('shift'); };
     const down = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
-      const k = e.key.toLowerCase(); if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','j','k','l','i',' ','escape','shift'].includes(k)) return;
+      const k = e.key.toLowerCase(); if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','j','k','l','i','u',' ','escape','shift'].includes(k)) return;
       if (sim.paused && k !== 'escape') return;
       if (sim.phase !== 'playing') return; e.preventDefault(); unlock(); keys.add(k); move();
       if (k === 'j') sim.held = true;
-      if (!e.repeat) { if (k === 'j') sim.requestAction('attack'); if (k === 'k' || k === ' ') sim.requestAction('jump'); if (k === 'l') sim.requestAction('throw'); if (k === 'i') sim.requestAction('special'); if (k === 'escape') { sim.paused = !sim.paused; sim.clearInput(); keys.clear(); refresh(); } }
+      if (!e.repeat) { if (k === 'j') sim.requestAction('attack'); if (k === 'k' || k === ' ') sim.requestAction('jump'); if (k === 'l') sim.requestAction('throw'); if (k === 'i') sim.requestAction('special'); if (k === 'u') sim.requestAction('dodge'); if (k === 'escape') { sim.paused = !sim.paused; sim.clearInput(); keys.clear(); refresh(); } }
     };
     const up = (e: KeyboardEvent) => { keys.delete(e.key.toLowerCase()); move(); if (e.key.toLowerCase() === 'j') sim.held = false; };
     const blur = () => { keys.clear(); sim.clearInput(); stick.current = null; attackPointer.current = null; setKnob({ x: 0, y: 0 }); if (sim.phase === 'playing') sim.paused = true; refresh(); };
@@ -76,17 +76,18 @@ export default function StreetPage() {
     else touchRun.current.reset();
     stick.current = null; sim.mx = 0; sim.my = 0; sim.sprint = false; setKnob({ x: 0, y: 0 });
   }
-  function actionButton(action: Action, text: string, key: string) {
+  function actionButton(action: Action, text: string, key: string, hint: string) {
     const release = (e: PointerEvent<HTMLButtonElement>) => {
       if (action === 'attack' && attackPointer.current === e.pointerId) { attackPointer.current = null; sim.held = false; }
     };
-    return <button className={`street-action ${action} ${action === 'throw' && sim.grabTarget ? 'available' : ''}`} aria-label={text} onPointerDown={e => {
+    const recovering = action === 'dodge' && sim.dodgeCooldown > 0;
+    return <button className={`street-action ${action} ${action === 'throw' && sim.grabTarget ? 'available' : ''} ${recovering ? 'recovering' : ''}`} aria-label={text} onPointerDown={e => {
       e.preventDefault();
       if (action === 'attack' && attackPointer.current !== null) return;
       unlock(); e.currentTarget.setPointerCapture(e.pointerId);
       if (action === 'attack') { attackPointer.current = e.pointerId; sim.held = true; }
       sim.requestAction(action);
-    }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}><b>{text}</b><small>{key}</small></button>;
+    }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}><b>{text}</b><small className="street-key">{key}</small><small className="street-touch-hint">{recovering ? '恢复中' : hint}</small></button>;
   }
   const play = sim.phase === 'playing'; const boss = sim.enemies.find(e => isBoss(e.kind));
   return <main ref={shell} className="street-shell">
@@ -115,8 +116,8 @@ export default function StreetPage() {
     </section>
     <div className={`street-controls ${play && !sim.paused ? '' : 'inactive'}`}>
       <div className={`street-stick ${sim.running ? 'running' : ''}`} aria-label="移动摇杆，同方向快速推两次奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><span>＋</span><i style={{ transform: `translate(${knob.x}px,${knob.y}px)` }} /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双推奔跑'}</small></div>
-      <div className="street-control-note">WASD 移动<br /><span>抓投破围 · 跳踢追击</span></div>
-      <div className="street-buttons">{actionButton('throw', sim.carried ? '放下' : '抓投/举箱', 'L')}{actionButton('jump', '跳跃', 'K')}{actionButton('special', '绝招', 'I · 50怒气')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J · 扔出' : 'J · 按住')}</div>
+      <div className="street-control-note">WASD 移动<br /><span>U 闪避 · 抓投破围 · 跳踢追击</span></div>
+      <div className="street-buttons">{actionButton('throw', sim.carried ? '放下' : '抓投/举箱', 'L', '靠近使用')}{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.jump > 0 ? '落地可用' : '方向撤步')}{actionButton('special', '绝招', 'I · 50怒气', '50怒气')}{actionButton('jump', '跳跃', 'K', '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J · 扔出' : 'J · 按住', sim.carried ? '扔出' : '按住连打')}</div>
     </div>
   </main>;
 }
