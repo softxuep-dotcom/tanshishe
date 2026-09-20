@@ -1,53 +1,37 @@
-# 发布与试玩
+# GitHub Pages 发布与试玩
 
-## 固定地址
+正式地址：https://softxuep-dotcom.github.io/tanshishe/
 
-https://cargo-escape-zhifu.softxuep.chatgpt.site/
+手机网页优先，推荐横屏。GitHub Pages 为公开试玩，不需要 ChatGPT 登录。旧 Sites 地址不再接收更新。
 
-这是本项目绑定的 Sites 正式试玩地址。名字保留了旧游戏名称，但更新后首页是《南桥街》。无需改域名或新建站点。`/nanqiao` 同样进入本游戏。
+## 一键发布
 
-手机网页优先。电脑和手机都能通过这个线上地址打开，不要求同一 Wi-Fi，也不要求开发电脑一直开机。当前访问权限仅限站点所有者，手机如要求登录，使用创建该站点的账号。
+1. 保存项目文件。
+2. 双击根目录 `Publish-Game.cmd`。
+3. 脚本会将本仓库所有未忽略的修改（含新增和删除）提交，然后推送 `main`，并打开 GitHub Actions 页面。
+4. 等最新的 `Deploy game to GitHub Pages` 显示绿色成功，再双击 `Play-Game.cmd`，或在手机刷新正式地址。
 
-## 每次改完怎么发布
+本机需要 Git 已登录 GitHub。无需 Codex、Sites 插件、手工上传或长期发布密钥。请勿将私密文件放进未忽略的项目路径。脚本不会强制推送，遇到远端冲突会停止；请处理冲突后重试。
 
-1. 保存项目文件，打开已登录并连接 Sites 的 Codex 桌面应用。
-2. 双击项目根目录的 `Publish-Game.cmd`。
-3. 脚本会通过已安装的 Codex CLI，把发布请求发送到本项目原来的对话。若对话在忙，请等待并在 Codex 中查看消息是否开始处理。
-4. 等 Codex 明确报告部署成功，再双击 `Play-Game.cmd` 或在手机刷新固定网址。
+不想自动提交所有修改时，可以自行选择文件提交，再执行 `git push origin main`，同样触发部署。没有新提交的重复 push 不会触发工作流；可到 Actions 手动 Run workflow 重新发布。
 
-**这是“一键请求 Codex 发布”，不是脱离 Codex 的独立上传器。** 提交请求成功不等于已经上线。需要 Codex 登录、Sites 连接可用，并消耗正常的 Codex 任务用量；账号授权或网络失败时需要在 Codex 内处理。
+`Publish-Game.cmd` 的成功只代表推送成功，最终以 Actions 的部署结果为准。测试或构建失败不会发布新版本。
 
-Sites 写入凭证是短期凭证，不能放入脚本或仓库。现有 GitHub origin 只是源码仓库；普通 `git push` 不会自动更新这个 Sites 地址。当前没有建立 GitHub Pages，也没有配置外部 CI。
+## 流程与配置
 
-入口只发起发布，不自动提交未经审核的其他项目，不切换站点访问权限，不新建站点。当前配置绑定原对话 ID；更换电脑、归档原对话或 CLI 无法找到会话时，直接在本项目 Codex 对话发送：
+- 仓库：https://github.com/softxuep-dotcom/tanshishe
+- 工作流：`.github/workflows/deploy-pages.yml`
+- 自动触发：推送到 `main`；也支持 Actions 手动触发。
+- Node 24，npm ci，8 项战斗测试、TypeScript 检查、静态构建，然后部署 `dist/pages`。
+- `npm run build:pages` 使用独立静态入口 `pages/`，复用游戏页面，通过 `vite.pages.config.ts` 设置 `/tanshishe/` 资源前缀，避开 SSR 路由导出。
+- 普通 `npm run dev` 继续从 `/` 访问。Pages 静态产物需要从 `/tanshishe/` 路径访问。
+- 仓库 Settings → Pages 的 Source 使用 GitHub Actions。
 
-> 按 docs/PUBLISHING.md 发布当前游戏到现有 Sites，完成后给我试玩地址。
+手机可访问正式网址，不要求开发电脑开机或同一 Wi-Fi。新版本未出现时，先确认 Actions 成功，再刷新或关闭旧标签重开。
 
-## 给执行发布的 Codex
+## 仅检查一键入口
 
-1. 读取 `.openai/hosting.json`，沿用 project_id。使用当前可用的 Sites hosting 技能和原生 Sites 工具。
-2. 检查工作区差异，仅处理本项目发布所需的改动。保持手机网页优先，不在发布任务里改玩法。
-3. 运行现有模拟测试、类型检查和 `npm run build`；任何失败都停止发布并说明。源码未变且已有成功验证结果时可复用。
-4. 使用原生 Sites 工具获取短期源码写入凭证，仅保存在当前执行内存。提交本次源码，使用每次命令独立的认证头推送到工具返回的远端。不得把 token 写入文件、Git 配置或日志。
-5. 推送成功后读取完整 HEAD SHA。构建产物必须来自该源码。用 Sites package-site helper 打包 `dist/client`，不得把项目源码目录当作部署包。
-6. 使用原生工具保存版本，并部署至现有站点，保持所有者私有权限。若工具明确返回自动发布已接受，则按该工具契约检查对应部署，不重复发布。
-7. 查询部署状态直到成功或失败。仅成功时宣布上线并打开工具返回的网址；失败时保留原线上版本并提供真实错误。
+PowerShell：`./scripts/request-publish.ps1 -CheckOnly`。不会提交或推送。
 
-不得用猜测的 REST API 或过期 token 拼接长期发布脚本。
+GitHub 官方说明：https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages
 
-## 手机打不开或内容没有更新
-
-- 先确认 Codex 已报告部署成功，再刷新或关闭旧标签重新打开。
-- 手机需要登录有权限的账号。当前不是公开分享网站。
-- 本项目此前出现过代理自动切换节点导致访问被拦截，用户切换 Clash 为固定节点后恢复；再次出现时可先检查相同设置。
-- 本地地址 `localhost` 只能在开发电脑访问；局域网 IP 需要同网。手机异地试玩使用上面的 Sites 地址。
-
-## 检查入口而不发布
-
-在 PowerShell 运行 `./scripts/request-publish.ps1 -CheckOnly`。这仅检查本地配置，不发送消息，也不验证远程发布成功。
-
-## 最近验证
-
-- 南桥街版本 6 已由 Sites 返回 `succeeded`，首页和 `/nanqiao` 均包含于部署产物。
-- 发布源码：`ec5f78ab11b97dd6b0251e6446684112d9dcef02`。
-- 发布入口的 `-CheckOnly` 检查通过。未实际双击发起第二次发布，以免重复排队；本次上线由当前 Codex 对话按相同发布流程完成。

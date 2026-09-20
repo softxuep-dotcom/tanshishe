@@ -1,6 +1,6 @@
 # 南桥街：最后一场
 
-手机网页优先。双击 `Publish-Game.cmd` 向 Codex 发起发布；部署成功后双击 `Play-Game.cmd` 试玩。详见 [发布说明](docs/PUBLISHING.md) 和 [美术基调](docs/ART_DIRECTION.md)。
+手机网页优先。双击 `Publish-Game.cmd` 提交并推送到 GitHub，自动部署 Pages；部署成功后双击 `Play-Game.cmd` 试玩。详见 [发布说明](docs/PUBLISHING.md) 和 [美术基调](docs/ART_DIRECTION.md)。
 
 原创像素横版清关动作游戏原型。首页 `/` 直接进入游戏，旧试玩地址 `/nanqiao` 继续可用。
 
@@ -33,4 +33,5 @@ npx tsc --noEmit
 npm run build
 ```
 
-静态产物位于 `dist/client`。南桥街已发布到现有 Sites；每次后续修改需要重新发布，具体方式见发布说明。
+静态产物位于 `dist/client`。发布目标已切换到 GitHub Pages，推送 main 自动部署，具体方式见发布说明。
+

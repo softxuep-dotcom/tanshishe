@@ -6,6 +6,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "build:pages": "vite build --config vite.pages.config.ts",
     "dev": "vinext dev",
     "build": "node --import ./scripts/windows-build-exit.mjs ./node_modules/vinext/dist/cli.js build",
     "start": "wrangler dev --config dist/server/wrangler.json",

@@ -1,2 +1,2 @@
 @echo off
-start "" "https://cargo-escape-zhifu.softxuep.chatgpt.site/"
+start "" "https://softxuep-dotcom.github.io/tanshishe/"
