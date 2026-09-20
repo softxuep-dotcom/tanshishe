@@ -33,4 +33,4 @@ npx tsc --noEmit
 npm run build
 ```
 
-静态产物位于 `dist/client`。本次清理未发布到远程站点。
+静态产物位于 `dist/client`。南桥街已发布到现有 Sites；每次后续修改需要重新发布，具体方式见发布说明。

@@ -1,6 +1,7 @@
 export type Role = 'chen' | 'tuo' | 'man';
 export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss';
 export type Action = 'attack' | 'jump' | 'throw' | 'special';
+export type EnemyKind = 'punk' | 'runner' | 'tank' | 'boss';
 export const HEROES = {
   chen: { name: '陈野', title: '街头拳手', detail: '连拳 · 上勾拳 · 均衡', speed: 86, damage: 14, color: 0xf1ba63 },
   tuo: { name: '阿拓', title: '修车铺的大块头', detail: '重拳 · 远投 · 强壮', speed: 67, damage: 19, color: 0x65cbb1 },
@@ -10,6 +11,24 @@ export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: num
 export interface Spark { x: number; y: number; life: number; text: string; }
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export class StreetGame {
+  training = false; godMode = false; freezeEnemies = false; showRanges = false;
+  trainingEnemy: EnemyKind = 'punk'; trainingCount = 1;
+  startTraining(role: Role, kind: EnemyKind = 'punk', count = 1) {
+    this.start(role); this.training = true; this.phase = 'playing'; this.godMode = true;
+    this.setTrainingOpponents(kind, count);
+  }
+  setTrainingOpponents(kind: EnemyKind, count: number) {
+    if (!this.training) return;
+    this.trainingEnemy = kind; this.trainingCount = Math.max(1, Math.min(4, Math.floor(count) || 1));
+    this.enemies = Array.from({ length: this.trainingCount }, (_, i) => this.fighter(kind, 255 + i * 42, 177 + i % 3 * 24, kind === 'boss' ? 330 : kind === 'tank' ? 86 : kind === 'runner' ? 42 : 52));
+    this.sparks = []; this.events = []; this.combo = 0; this.comboTime = 0; this.kills = 0; this.hitstop = 0; this.shake = 0; this.clearInput();
+  }
+  resetTraining() {
+    if (!this.training) return;
+    const { role, trainingEnemy, trainingCount, godMode, freezeEnemies, showRanges } = this;
+    this.startTraining(role, trainingEnemy, trainingCount);
+    this.godMode = godMode; this.freezeEnemies = freezeEnemies; this.showRanges = showRanges;
+  }
   phase: 'select' | 'intro' | 'playing' | 'bossIntro' | 'won' | 'lost' = 'select';
   paused = false; role: Role = 'chen'; hero: Fighter; enemies: Fighter[] = []; sparks: Spark[] = [];
   time = 0; camera = 0; wave = 0; kills = 0; rage = 50; combo = 0; comboTime = 0; hitstop = 0; shake = 0;
@@ -17,6 +36,7 @@ export class StreetGame {
   constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
   fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, jump: 0, vx: 0, wind: 0, charge: 0, dead: 0 }; }
   start(role: Role) {
+    this.training = false; this.godMode = false; this.freezeEnemies = false; this.showRanges = false; this.events = [];
     this.role = role; this.hero = this.fighter(role, 85, 199, role === 'tuo' ? 180 : 150); this.hero.timer = 0;
     this.enemies = []; this.sparks = []; this.phase = 'intro'; this.paused = false; this.time = 0; this.camera = 0; this.wave = 0;
     this.kills = 0; this.rage = 50; this.combo = 0; this.comboTime = 0; this.hitstop = 0; this.shake = 0; this.attackStep = 0; this.food = false; this.clearInput();
@@ -66,7 +86,7 @@ export class StreetGame {
     if (!e.hp) { e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5); }
   }
   hurt(damage: number, face: number) {
-    const p = this.hero; if (p.inv > 0 || p.jump > .12) return;
+    const p = this.hero; if ((this.training && this.godMode) || p.inv > 0 || p.jump > .12) return;
     p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
     this.combo = 0; this.shake = .2; this.events.push('hurt'); if (!p.hp) { this.phase = 'lost'; this.clearInput(); }
   }
@@ -94,7 +114,7 @@ export class StreetGame {
     this.camera = clamp(p.x - 170, left, Math.max(left, right - 480 + 45));
     for (const e of alive) {
       e.x = clamp(e.x, left + 15, right - 15); e.y = clamp(e.y, 156, 242);
-      if (e.stun > 0) continue;
+      if (e.stun > 0 || (this.training && this.freezeEnemies)) continue;
       if (e.charge > 0) { e.charge -= dt; e.x += e.face * 230 * dt; if (Math.abs(e.x - p.x) < 27 && Math.abs(e.y - p.y) < 24) this.hurt(23, e.face); if (e.charge <= 0) { e.stun = 1.2; e.pose = 'hurt'; e.poseTime = 1.2; } continue; }
       if (e.wind > 0) { e.wind -= dt; if (e.wind <= 0) { if (e.kind === 'boss') { e.charge = .68; e.pose = 'charge'; e.poseTime = .68; } else { e.pose = 'punch'; e.poseTime = .23; if (Math.abs(e.x - p.x) < 43 && Math.abs(e.y - p.y) < 22) this.hurt(e.kind === 'tank' ? 18 : 10, e.face); } } continue; }
       const dx = p.x - e.x, dy = p.y - e.y; e.face = dx >= 0 ? 1 : -1;
@@ -108,7 +128,7 @@ export class StreetGame {
       for (const o of alive) if (o.id < e.id && Math.abs(o.x - e.x) < 21 && Math.abs(o.y - e.y) < 12) e.y += (e.id % 2 ? 1 : -1) * 23 * dt;
     }
     if (this.food && Math.abs(p.x - 768) < 25 && Math.abs(p.y - 208) < 23) { p.hp = Math.min(p.max, p.hp + 45); this.food = false; this.sparks.push({ x: p.x, y: p.y - 50, life: 1, text: '+45 热包子' }); this.events.push('heal'); }
-    if (!alive.length && this.enemies.every(e => !e.dead)) {
+    if (!this.training && !alive.length && this.enemies.every(e => !e.dead)) {
       if (this.wave === 3) { this.phase = 'won'; this.clearInput(); }
       else if (p.x > right - 60) { this.wave++; this.enemies = []; if (this.wave === 3) { this.wave = 2; this.phase = 'bossIntro'; this.clearInput(); /* boss shares the final street */ this.wave = 3; p.x = 1130; this.camera = 880; } else { this.spawn(); if (this.wave === 1) this.food = true; } }
     }

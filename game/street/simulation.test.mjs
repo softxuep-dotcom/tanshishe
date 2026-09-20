@@ -34,3 +34,16 @@ test('boss telegraphs, charges, then leaves a punish window',()=>{
 test('death stops play and restart clears held movement and resets health',()=>{
  const g=start();g.mx=1;g.held=true;g.hurt(999,1);assert.equal(g.phase,'lost');assert.equal(g.mx,0);g.start('man');assert.equal(g.hero.hp,g.hero.max);assert.equal(g.held,false);assert.equal(g.phase,'intro');
 });
+
+test('training stays in arena after all enemies die and resets without story',()=>{
+ const g=new StreetGame();g.startTraining('tuo','boss',2);assert.equal(g.phase,'playing');assert.equal(g.enemies.length,2);
+ const hp=g.hero.hp;g.hurt(999,1);assert.equal(g.hero.hp,hp);
+ for(const e of g.enemies)g.hit(e,999,0);g.mx=1;advance(g,9);assert.equal(g.phase,'playing');assert.equal(g.wave,0);
+ g.freezeEnemies=true;g.showRanges=true;g.resetTraining();assert.equal(g.enemies.length,2);assert.equal(g.hero.hp,g.hero.max);assert.equal(g.freezeEnemies,true);assert.equal(g.showRanges,true);
+ g.godMode=false;g.hurt(999,1);assert.equal(g.phase,'lost');g.resetTraining();assert.equal(g.phase,'playing');assert.equal(g.godMode,false);
+ g.start('chen');assert.equal(g.training,false);assert.equal(g.showRanges,false);assert.equal(g.godMode,false);
+});
+test('training freeze stops enemy decisions but enemies can still be hit',()=>{
+ const g=new StreetGame();g.startTraining('chen','punk',1);g.freezeEnemies=true;const e=g.enemies[0];const x=e.x;advance(g,2);assert.equal(e.x,x);assert.equal(e.wind,0);
+ e.x=g.hero.x+25;e.y=g.hero.y;g.action('attack');assert.ok(e.hp<e.max);
+});

@@ -52,7 +52,21 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         if (/^\d/.test(s.text)) { g.lineStyle(2, 0xffebac, s.life * 2); for (let a = 0; a < 6; a++) { const angle = a * Math.PI / 3; g.lineBetween(x + Math.cos(angle) * 6, y + 18 + Math.sin(angle) * 6, x + Math.cos(angle) * 14, y + 18 + Math.sin(angle) * 14); } }
       }
       const live = sim.enemies.filter(e => e.hp > 0);
-      if (sim.phase === 'playing' && !live.length) this.label(352, 120, '前进 →', 20, '#ffe093');
+      if (sim.phase === 'playing' && !live.length) this.label(290, 120, sim.training ? '已清场 · 可重置陪练' : '前进 →', 15, '#ffe093');
+      if (sim.training && sim.showRanges) {
+        const p = sim.hero, x = p.x - camera + offset;
+        const reach = p.jump > 0 ? 63 : 48;
+        g.lineStyle(1, 0xffc66f, .9);
+        g.strokeRect(x + (p.face > 0 ? -9 : -reach), p.y - 23, reach + 9, 46);
+        for (const f of [p, ...live]) {
+          const fx = f.x - camera + offset;
+          g.lineStyle(1, f === p ? 0x8adbc1 : 0xec8c93);
+          g.lineBetween(fx - 5, f.y, fx + 5, f.y); g.lineBetween(fx, f.y - 5, fx, f.y + 5);
+          g.strokeRect(fx - 10, f.y - 55, 20, 55);
+        }
+        this.label(8, 110, '黄框：普攻检测范围 / 十字：脚底判定点', 8);
+        this.label(8, 121, '竖框仅示意身体，不参与命中计算', 8);
+      }
       if (sim.phase === 'playing' && sim.time < 7) this.label(115, 250, '连打清兵 · 靠近抓投 · 跳跃躲攻击', 9);
       const boss = live.find(e => e.kind === 'boss');
       if (boss) { r(144, 42, 192, 4, 0x261f2a); r(144, 42, 192 * boss.hp / boss.max, 4, 0xd4635a); this.label(215, 48, '铁 头', 9, '#eaa086'); }

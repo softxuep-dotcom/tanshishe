@@ -45,3 +45,9 @@ Sites 写入凭证是短期凭证，不能放入脚本或仓库。现有 GitHub 
 ## 检查入口而不发布
 
 在 PowerShell 运行 `./scripts/request-publish.ps1 -CheckOnly`。这仅检查本地配置，不发送消息，也不验证远程发布成功。
+
+## 最近验证
+
+- 南桥街版本 6 已由 Sites 返回 `succeeded`，首页和 `/nanqiao` 均包含于部署产物。
+- 发布源码：`ec5f78ab11b97dd6b0251e6446684112d9dcef02`。
+- 发布入口的 `-CheckOnly` 检查通过。未实际双击发起第二次发布，以免重复排队；本次上线由当前 Codex 对话按相同发布流程完成。
