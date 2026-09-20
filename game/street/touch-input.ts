@@ -37,3 +37,19 @@ export class DoublePushRun {
     return this.running;
   }
 }
+
+// Once a captured attack pointer leaves its circular button, it cannot resume
+// until a new press. Other fingers (including the movement stick) are ignored.
+export class AttackHold {
+  private pointer: number | null = null;
+  reset() { this.pointer = null; }
+  begin(id: number) { if (this.pointer !== null) return false; this.pointer = id; return true; }
+  end(id: number) { if (this.pointer !== id) return false; this.reset(); return true; }
+  move(id: number, x: number, y: number, bounds: { left: number; top: number; width: number; height: number }) {
+    if (this.pointer !== id) return false;
+    const dx = (x - bounds.left - bounds.width / 2) / (bounds.width / 2);
+    const dy = (y - bounds.top - bounds.height / 2) / (bounds.height / 2);
+    if (dx * dx + dy * dy <= 1) return false;
+    this.reset(); return true;
+  }
+}

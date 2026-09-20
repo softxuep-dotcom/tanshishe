@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import * as Phaser from 'phaser';
-import { HEROES, StreetGame, isBoss, type Fighter } from './simulation';
+import { HEROES, StreetGame, type Fighter } from './simulation';
+import { KNOCKBACK } from './combat-data';
 
 export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: () => void, sound: (name: string) => void) {
   class StreetScene extends Phaser.Scene {
@@ -84,31 +85,35 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         if (/^\d/.test(s.text)) { g.lineStyle(2, 0xffebac, s.life * 2); for (let a = 0; a < 6; a++) { const angle = a * Math.PI / 3; g.lineBetween(x + Math.cos(angle) * 6, y + 18 + Math.sin(angle) * 6, x + Math.cos(angle) * 14, y + 18 + Math.sin(angle) * 14); } }
       }
       const live = sim.enemies.filter(e => e.hp > 0);
-      if (sim.phase === 'playing' && !live.length) this.label(290, 120, sim.training ? '已清场 · 可重置陪练' : '前进 →', 15, '#ffe093');
+      if (sim.phase === 'playing' && sim.encounterClear) this.label(width / 2 - (sim.training ? 62 : 24), 120, sim.training ? '已清场 · 可重置陪练' : '前进 →', 15, '#ffe093');
+      else if (sim.phase === 'playing' && !live.length && sim.pendingEnemies) this.label(width / 2 - 33, 120, '增援接近…', 12, '#ffe093');
       if (sim.training && sim.showRanges) {
         const p = sim.hero, x = p.x - camera + offset;
-        const reach = p.jump > 0 ? 63 : 48;
+        const reach = sim.currentAttack?.reach ?? (p.motion === 'airborne' ? 63 : 48);
         g.lineStyle(1, 0xffc66f, .9);
         g.strokeRect(x + (p.face > 0 ? -9 : -reach), p.y - 23, reach + 9, 46);
+        if (sim.currentAttack) {
+          const height = sim.currentAttack.height;
+          g.lineStyle(1, sim.attackPhase === 'active' ? 0xffffff : 0xffc66f, .8);
+          g.strokeRect(x + (p.face > 0 ? -9 : -reach), p.y - p.height - height.high, reach + 9, height.high - height.low);
+        }
         for (const f of [p, ...live]) {
           const fx = f.x - camera + offset;
           g.lineStyle(1, f === p ? 0x8adbc1 : 0xec8c93);
           g.lineBetween(fx - 5, f.y, fx + 5, f.y); g.lineBetween(fx, f.y - 5, fx, f.y + 5);
-          g.strokeRect(fx - 10, f.y - 55, 20, 55);
+          g.strokeRect(fx - 10, f.y - f.height - 48, 20, 48);
+          if (f !== p) this.label(fx - 23, f.y + 9, `${Math.round(f.knockbackAmount)}/${KNOCKBACK.threshold}`, 7, '#b4dacc');
         }
-        this.label(8, 110, '黄框：普攻检测范围 / 十字：脚底判定点', 8);
-        this.label(8, 121, '竖框仅示意身体，不参与命中计算', 8);
+        this.label(8, 110, '黄框：地面攻击范围 / 十字：地面锚点', 8);
+        this.label(8, 121, `竖框：身体高度 / ${sim.attackPhase ?? p.motion}`, 8);
       }
-      if (sim.phase === 'playing' && sim.time < 9) this.label(100, 250, sim.chapter===1?'靠近木箱按抓投 · 攻击扔出 · 绿标箱内有补给':'连打清兵 · 靠近抓投 · 跳跃躲攻击', 9);
-      const boss = live.find(e => isBoss(e.kind));
-      if (boss) { r(width / 2 - 96, 42, 192, 4, 0x261f2a); r(width / 2 - 96, 42, 192 * boss.hp / boss.max, 4, 0xd4635a); this.label(width / 2 - 25, 48, boss.kind==='longleg'?'长 腿':'铁 头', 9, '#eaa086'); }
+      // 开场提示和 Boss 血条由 DOM HUD 负责，画布只留战场内的信息。
     }
     person(f: Fighter, x: number, ground: number) {
       const g = this.ink; const isHero = f === sim.hero; const big = f.kind === 'boss' || f.kind === 'tank' || f.kind === 'tuo';
-      const jump = f.jump > 0 ? Math.sin(f.jump / .7 * Math.PI) * 33 : 0;
       const moving = isHero ? Math.hypot(sim.mx, sim.my) > .1 : f.timer < .9 && f.stun <= 0;
       const stride = moving && f.pose === 'idle' ? Math.sin(sim.time * (isHero && sim.running ? 21 : 13) + f.id) * (isHero && sim.running ? 7 : 5) : 0;
-      const y = ground - jump - (f.kind==='longleg'?5:0); const w = big ? 24 : 17; const face = f.face;
+      const y = ground - f.height - (f.kind==='longleg'?5:0); const w = big ? 24 : 17; const face = f.face;
       let shirt = isHero ? HEROES[sim.role].color : f.kind === 'longleg' ? 0x6ec9bd : f.kind === 'slinger' ? 0x7797af : f.kind === 'boss' ? 0xb54f48 : f.kind === 'runner' ? 0x9981b0 : f.kind === 'tank' ? 0x6f8a73 : 0x74849b;
       if (f.pose === 'hurt' && f.poseTime > .15) shirt = 0xffe9c6;
       if (isHero && (sim.running || f.pose === 'dash')) {
@@ -117,14 +122,15 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         g.lineBetween(x - face * 18, ground - 12, x - face * 43, ground - 12);
       }
       if (f.pose === 'hurt') shirt = 0xf5e4bd;
-      const alpha = f.hp <= 0 ? f.dead / .65 : isHero && f.inv > 0 && Math.floor(sim.time * 18) % 2 ? .45 : 1;
-      g.fillStyle(0x0c1523, .4); g.fillEllipse(x, ground + 1, big ? 38 : 28, 9);
+      const alpha = f.hp <= 0 ? f.dead / .65 : f.entryTime > 0 ? .4 : isHero && f.inv > 0 && Math.floor(sim.time * 18) % 2 ? .45 : 1;
+      if (f.entryTime > 0) this.label(x - 15, y - 70, '入场中', 8, '#ffe093');
+      if (sim.isBossVulnerable(f)) { g.lineStyle(2, 0x8adbc1, .8); g.strokeEllipse(x, ground + 1, 43, 13); }
+      g.fillStyle(0x0c1523, .4); g.fillEllipse(x, ground + 1, (big ? 38 : 28) * Math.max(.65, 1 - f.height / 150), 9);
       const r = (a: number, b: number, c: number, d: number, color: number) => { g.fillStyle(color, alpha); g.fillRect(Math.round(x + (face === 1 ? a : -a - c)), Math.round(y + b), c, d); };
-      if (f.hp <= 0 || f.pose === 'thrown') { r(-20, -12, 32, 12, shirt); r(12, -13, 11, 12, 0xdfa77d); r(-27, -10, 9, 8, 0x1b2635); return; }
-      if (f.pose === 'dodge') {
+      if (f.hp <= 0 || f.motion === 'launched' || f.motion === 'downed') { r(-20, -12, 32, 12, shirt); r(12, -13, 11, 12, 0xdfa77d); r(-27, -10, 9, 8, 0x1b2635); return; }
+      if (f.pose === 'dodge' || ['takeoff', 'landing', 'rising'].includes(f.motion)) {
         // Low defensive silhouette, distinct from the forward dash attack.
-        g.lineStyle(2, 0x9edbd5, .55);
-        g.strokeEllipse(x, ground, 42, 10);
+        if (f.pose === 'dodge') { g.lineStyle(2, 0x9edbd5, .55); g.strokeEllipse(x, ground, 42, 10); }
         r(-14, -29, w + 5, 17, shirt);
         r(-12, -45, 16, 16, 0xe0ab80); r(-13, -46, 17, 5, 0x282832);
         r(3, -30, 8, 8, 0xe0ab80);
@@ -145,7 +151,9 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if (big) { r(-7, -41, 15, 3, 0x3e3031); r(-11, -33, 7, 17, 0xdba077); }
       const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash'].includes(f.pose);
       r(-w / 2 - 4, -32, 6, 14, shirt); r(-w / 2 - 4, -20, 6, 7, 0xe0ab80);
-      if (attack && isHero && sim.windingUp) {
+      if (attack && isHero && sim.attackPhase === 'recover') {
+        r(6, -33, 10, 7, shirt); r(13, -31, 8, 9, 0xe0ab80);
+      } else if (attack && isHero && sim.windingUp) {
         r(3, -35, 10, 7, shirt); r(9, -39, 8, 9, 0xe0ab80);
       } else if (attack) {
         if (f.pose === 'kick') { r(7, -20, f.kind==='longleg'?82:24, 8, 0x344b5b); r(f.kind==='longleg'?87:28, -21, 9, 10, 0xe4c58e); }
