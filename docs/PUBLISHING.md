@@ -22,7 +22,7 @@
 - 仓库：https://github.com/softxuep-dotcom/tanshishe
 - 工作流：`.github/workflows/deploy-pages.yml`
 - 自动触发：推送到 `main`；也支持 Actions 手动触发。
-- Node 24，npm ci，8 项战斗测试、TypeScript 检查、静态构建，然后部署 `dist/pages`。
+- Node 24，npm ci，战斗测试、TypeScript 检查、静态构建，然后部署 `dist/pages`。
 - `npm run build:pages` 使用独立静态入口 `pages/`，复用游戏页面，通过 `vite.pages.config.ts` 设置 `/tanshishe/` 资源前缀，避开 SSR 路由导出。
 - 普通 `npm run dev` 继续从 `/` 访问。Pages 静态产物需要从 `/tanshishe/` 路径访问。
 - 仓库 Settings → Pages 的 Source 使用 GitHub Actions。
