@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { HEROES, StreetGame, isBoss, type Action, type Role, type EnemyKind } from '../../game/street/simulation';
 import './street.css';
-import { readStick } from '../../game/street/touch-input';
+import { DoublePushRun, readStick } from '../../game/street/touch-input';
 
 export default function StreetPage() {
   const [sim] = useState(() => new StreetGame()); const [, render] = useState(0);
@@ -26,6 +26,13 @@ export default function StreetPage() {
   const [role, setRole] = useState<Role>('chen'); const [chapter, setChapter] = useState<0 | 1>(0); const [trainingPanel, setTrainingPanel] = useState(false); const [muted, setMuted] = useState(false); const muteRef = useRef(false);
   const audio = useRef<AudioContext | null>(null); const stick = useRef<number | null>(null); const [knob, setKnob] = useState({ x: 0, y: 0 });
   const attackPointer = useRef<number | null>(null);
+  const touchRun = useRef(new DoublePushRun());
+  useEffect(() => {
+    if (sim.paused || sim.phase !== 'playing') {
+      touchRun.current.reset(); stick.current = null; attackPointer.current = null;
+      sim.clearInput(); setKnob({ x: 0, y: 0 });
+    }
+  }, [sim, sim.paused, sim.phase]);
   const refresh = () => render(n => n + 1);
   function unlock() { try { audio.current ??= new AudioContext(); void audio.current.resume(); } catch {} }
   function sound(name: string) {
@@ -58,11 +65,17 @@ export default function StreetPage() {
   }, [sim]);
   function joystick(e: PointerEvent<HTMLDivElement>) {
     if (stick.current !== e.pointerId) return; const b = e.currentTarget.getBoundingClientRect(); const x = e.clientX - b.left - b.width / 2, y = e.clientY - b.top - b.height / 2;
-    const input = readStick(x, y, b.width / 2, sim.sprint);
-    sim.mx = input.x; sim.my = input.y; sim.sprint = input.sprint;
+    const input = readStick(x, y, b.width / 2);
+    sim.mx = input.x; sim.my = input.y;
+    sim.sprint = touchRun.current.update(input.x, input.y, performance.now());
     setKnob({ x: input.knobX * .65, y: input.knobY * .65 });
   }
-  function releaseStick(e: PointerEvent<HTMLDivElement>) { if (stick.current !== e.pointerId) return; stick.current = null; sim.mx = 0; sim.my = 0; sim.sprint = false; setKnob({ x: 0, y: 0 }); }
+  function releaseStick(e: PointerEvent<HTMLDivElement>) {
+    if (stick.current !== e.pointerId) return;
+    if (e.type === 'pointerup') touchRun.current.update(0, 0, performance.now());
+    else touchRun.current.reset();
+    stick.current = null; sim.mx = 0; sim.my = 0; sim.sprint = false; setKnob({ x: 0, y: 0 });
+  }
   function actionButton(action: Action, text: string, key: string) {
     const release = (e: PointerEvent<HTMLButtonElement>) => {
       if (action === 'attack' && attackPointer.current === e.pointerId) { attackPointer.current = null; sim.held = false; }
@@ -101,7 +114,7 @@ export default function StreetPage() {
       {(sim.phase === 'won' || sim.phase === 'lost') && <div className="street-overlay street-story"><span className="street-kicker">{sim.phase==='won' ? sim.chapterName+' / 完成' : '倒下了，再来一场'}</span><h2>{sim.phase==='won' ? (sim.chapter===0?'「给陆川留个座。」':'「他一直留着你们的合照。」') : '换个打法，再来。'}</h2><p>{sim.phase==='won' ? (sim.chapter===0?'林夏：「手伸出来。别藏了，我看见了。」':'长腿：「搬了三次宿舍，都没扔。他现在在旧商场天桥。」') : '不要站在人堆里硬拼。跳跃躲投掷，抓投破围，绝招解围。'}</p><p>{sim.phase==='won' ? (sim.chapter===0?'阿拓：「走吧，去河边货场找他。」':'小满：「走。饭凉了可以热，人得叫回来。」') : '本场击倒 '+sim.kills+' 人。'}</p>{sim.phase==='won' && sim.chapter===0 && <button className="street-primary" onClick={() => { sim.nextChapter(); refresh(); }}>前往第二关 · 河边货场 →</button>}{sim.phase==='won' && sim.chapter===1 && <div className="street-tutorial">目前两章试玩到这里结束。下一站：天桥上的陆川。</div>}<button className={sim.phase==='won' && sim.chapter===0?'street-secondary':'street-primary'} onClick={() => { if(sim.training)sim.resetTraining();else sim.start(sim.role,sim.chapter);refresh(); }}>重玩本关</button><button className="street-secondary" onClick={() => { sim.start(sim.role);sim.phase='select';refresh(); }}>返回选人</button></div>}
     </section>
     <div className={`street-controls ${play && !sim.paused ? '' : 'inactive'}`}>
-      <div className={`street-stick ${sim.running ? 'running' : ''}`} aria-label="移动摇杆，向左右推过外圈奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><span>＋</span><i style={{ transform: `translate(${knob.x}px,${knob.y}px)` }} /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '左右外推奔跑'}</small></div>
+      <div className={`street-stick ${sim.running ? 'running' : ''}`} aria-label="移动摇杆，同方向快速推两次奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><span>＋</span><i style={{ transform: `translate(${knob.x}px,${knob.y}px)` }} /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双推奔跑'}</small></div>
       <div className="street-control-note">WASD 移动<br /><span>抓投破围 · 跳踢追击</span></div>
       <div className="street-buttons">{actionButton('throw', sim.carried ? '放下' : '抓投/举箱', 'L')}{actionButton('jump', '跳跃', 'K')}{actionButton('special', '绝招', 'I · 50怒气')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J · 扔出' : 'J · 按住')}</div>
     </div>

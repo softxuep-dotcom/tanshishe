@@ -1,18 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StreetGame } from './simulation.ts';
-import { readStick } from './touch-input.ts';
+import { DoublePushRun, readStick } from './touch-input.ts';
 const advance = (g, seconds) => { for (let t=0;t<seconds;t+=1/120) g.update(1/120); };
 const game = () => { const g=new StreetGame();g.startTraining('chen','tank',1);g.freezeEnemies=true;g.enemies[0].x=g.hero.x+28;g.enemies[0].y=g.hero.y;return g; };
 
-test('stick deadzone, walking, horizontal sprint hysteresis and vertical lane changes',()=>{
- assert.equal(readStick(3,2,50,false).x,0);
- const walk=readStick(35,0,50,false);assert.ok(walk.x>0);assert.equal(walk.sprint,false);
- assert.equal(readStick(55,0,50,false).sprint,true);
- assert.equal(readStick(45,0,50,true).sprint,true);
- assert.equal(readStick(35,0,50,true).sprint,false);
- assert.equal(readStick(0,60,50,false).sprint,false);
- assert.deepEqual(readStick(0,0,50,true),{x:0,y:0,knobX:0,knobY:0,sprint:false});
+test('stick filters drift and retains analog walking without automatic outer-ring sprint',()=>{
+ assert.equal(readStick(3,2,50).x,0);
+ assert.ok(readStick(35,0,50).x>0);
+ assert.equal(readStick(55,0,50).x,1);
+ assert.deepEqual(readStick(0,0,50),{x:0,y:0,knobX:0,knobY:0});
+});
+test('same-direction double push starts running and holding preserves it',()=>{
+ for(const direction of [-1,1]) {
+  const input=new DoublePushRun();
+  assert.equal(input.update(direction,0,0),false);
+  assert.equal(input.update(direction,0,70),false);
+  assert.equal(input.update(0,0,100),false);
+  assert.equal(input.update(direction,0,180),true);
+  assert.equal(input.update(direction,.3,1500),true);
+  assert.equal(input.update(0,0,1600),false);
+ }
+});
+test('slow pushes, opposite directions, vertical movement and edge jitter do not trigger a run',()=>{
+ const input=new DoublePushRun();
+ input.update(1,0,0);input.update(0,0,100);assert.equal(input.update(1,0,400),false);
+ assert.equal(input.update(.4,0,420),false);assert.equal(input.update(1,0,450),false);
+ input.update(0,0,470);assert.equal(input.update(-1,0,500),false);
+ input.update(0,1,520);assert.equal(input.update(-1,0,550),false);
+});
+test('cancel/reset forgets the first push; reversal immediately stops running',()=>{
+ const input=new DoublePushRun();input.update(1,0,0);input.update(0,0,40);input.reset();
+ assert.equal(input.update(1,0,90),false);input.update(0,0,110);
+ assert.equal(input.update(1,0,150),true);
+ assert.equal(input.update(-.3,0,170),false);
+ assert.equal(input.update(1,0,180),false);
+ input.reset();assert.equal(input.update(1,0,210),false);
 });
 test('a tap near recovery end queues one attack and does not repeat',()=>{
  const g=game();g.hero.timer=.1;g.requestAction('attack');advance(g,.2);
