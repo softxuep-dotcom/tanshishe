@@ -4,7 +4,7 @@ import { HEROES, StreetGame, isBoss, type Action, type Role, type EnemyKind } fr
 import { CHAPTERS, bossDisplayName, type ChapterIndex } from '../../game/street/chapter-data';
 import { HERO_TOKEN, STORY, speaker } from '../../game/street/story-data';
 import './street.css';
-import { AttackHold, DoublePushRun, readStick } from '../../game/street/touch-input';
+import { AttackHold, DoublePushRun, readDpad } from '../../game/street/touch-input';
 
 const GLYPHS = {
   expand: 'M1 1h6v2H3v4H1V1zm14 0v6h-2V3H9V1h6zM1 15V9h2v4h4v2H1zm14 0H9v-2h4V9h2v6z',
@@ -39,13 +39,13 @@ export default function StreetPage() {
     } catch { setFullscreenMessage('未能进入全屏，请再点一次或使用支持全屏的浏览器。'); }
   }
   const [role, setRole] = useState<Role>('chen'); const [chapter, setChapter] = useState<ChapterIndex>(0); const [trainingPanel, setTrainingPanel] = useState(false); const [muted, setMuted] = useState(false); const muteRef = useRef(false);
-  const audio = useRef<AudioContext | null>(null); const stick = useRef<number | null>(null); const [knob, setKnob] = useState({ x: 0, y: 0 });
+  const audio = useRef<AudioContext | null>(null); const stick = useRef<number | null>(null); const [pad, setPad] = useState('');
   const attackHold = useRef(new AttackHold());
   const touchRun = useRef(new DoublePushRun());
   useEffect(() => {
     if (sim.paused || sim.phase !== 'playing') {
       touchRun.current.reset(); stick.current = null; attackHold.current.reset();
-      sim.clearInput(); setKnob({ x: 0, y: 0 });
+      sim.clearInput(); setPad('');
     }
   }, [sim, sim.paused, sim.phase]);
   const refresh = () => render(n => n + 1);
@@ -73,23 +73,23 @@ export default function StreetPage() {
       if (!e.repeat) { if (k === 'j') sim.requestAction('attack'); if (k === 'k' || k === ' ') sim.requestAction('jump'); if (k === 'l') sim.requestAction('throw'); if (k === 'i') sim.requestAction('special'); if (k === 'u') sim.requestAction('dodge'); if (k === 'escape') { sim.paused = !sim.paused; sim.clearInput(); keys.clear(); refresh(); } }
     };
     const up = (e: KeyboardEvent) => { keys.delete(e.key.toLowerCase()); move(); if (e.key.toLowerCase() === 'j') sim.held = false; };
-    const blur = () => { keys.clear(); sim.clearInput(); stick.current = null; attackHold.current.reset(); setKnob({ x: 0, y: 0 }); if (sim.phase === 'playing') sim.paused = true; refresh(); };
+    const blur = () => { keys.clear(); sim.clearInput(); stick.current = null; attackHold.current.reset(); setPad(''); if (sim.phase === 'playing') sim.paused = true; refresh(); };
     const visibility = () => { if (document.hidden) blur(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('visibilitychange', visibility);
     return () => { disposed = true; game?.destroy(true); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility); void audio.current?.close(); audio.current = null; };
   }, [sim]);
   function joystick(e: PointerEvent<HTMLDivElement>) {
     if (stick.current !== e.pointerId) return; const b = e.currentTarget.getBoundingClientRect(); const x = e.clientX - b.left - b.width / 2, y = e.clientY - b.top - b.height / 2;
-    const input = readStick(x, y, b.width / 2);
+    const input = readDpad(x, y, b.width / 2);
     sim.mx = input.x; sim.my = input.y;
     sim.sprint = touchRun.current.update(input.x, input.y, performance.now());
-    setKnob({ x: input.knobX * .65, y: input.knobY * .65 });
+    setPad(input.dir);
   }
   function releaseStick(e: PointerEvent<HTMLDivElement>) {
     if (stick.current !== e.pointerId) return;
     if (e.type === 'pointerup') touchRun.current.update(0, 0, performance.now());
     else touchRun.current.reset();
-    stick.current = null; sim.mx = 0; sim.my = 0; sim.sprint = false; setKnob({ x: 0, y: 0 });
+    stick.current = null; sim.mx = 0; sim.my = 0; sim.sprint = false; setPad('');
   }
   function actionButton(action: Action, text: string, key: string, hint: string) {
     const release = (e: PointerEvent<HTMLButtonElement>) => {
@@ -239,7 +239,7 @@ export default function StreetPage() {
       </div></div>}
     </section>
     <div className={`street-controls ${play && !sim.paused ? '' : 'inactive'}`}>
-      <div className={`street-stick ${sim.running ? 'running' : ''}`} aria-label="移动摇杆，同方向快速推两次奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><i style={{ transform: `translate(${knob.x}px,${knob.y}px)` }} /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双推奔跑'}</small></div>
+      <div className={`street-stick street-dpad ${sim.running ? 'running' : ''}`} data-dir={pad} aria-label="方向键，同方向双击奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><i className="u" /><i className="d" /><i className="l" /><i className="r" /><b /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双击奔跑'}</small></div>
       <div className="street-control-note"><b>WASD</b> 移动 · <b>Shift</b> 奔跑<br /><span>U 闪避 · 抓投破围 · 跳踢追击</span></div>
       <div className="street-buttons">{actionButton('throw', sim.carried ? '放下' : '抓投', 'L', sim.carried ? '放下木箱' : '靠近使用')}{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.motion !== 'grounded' ? '落地可用' : '方向撤步')}{actionButton('special', '绝招', 'I', sim.rage >= 50 ? '可释放' : `${sim.rage}/50 怒气`)}{actionButton('jump', '跳跃', 'K', '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J 扔出' : 'J 按住', sim.carried ? '扔出' : '按住连打')}</div>
     </div>

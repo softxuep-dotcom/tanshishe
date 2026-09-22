@@ -1,14 +1,11 @@
-// Distances are normalized to the visible stick radius, not device pixels.
-export function readStick(x: number, y: number, radius: number) {
-  const length = Math.hypot(x, y);
-  const distance = length / Math.max(1, radius);
-  const strength = Math.min(1, Math.max(0, (distance - .16) / .66));
-  return {
-    x: length ? x / length * strength : 0,
-    y: length ? y / length * strength : 0,
-    knobX: length ? x / length * Math.min(length, radius) : 0,
-    knobY: length ? y / length * Math.min(length, radius) : 0,
-  };
+// Digital D-pad in the style of TMNT: Shredder's Revenge mobile: a dead centre, then one of
+// eight directions at full walking speed. Distances are relative to the drawn pad's radius.
+const PAD_DIRS = ['r', 'dr', 'd', 'dl', 'l', 'ul', 'u', 'ur'] as const;
+export function readDpad(x: number, y: number, radius: number) {
+  if (Math.hypot(x, y) < Math.max(1, radius) * .22) return { x: 0, y: 0, dir: '' };
+  const sector = (Math.round(Math.atan2(y, x) / (Math.PI / 4)) + 8) % 8, angle = sector * Math.PI / 4;
+  // `+ 0` folds -0 into 0 so callers can compare directions directly.
+  return { x: Math.round(Math.cos(angle) * 1000) / 1000 + 0, y: Math.round(Math.sin(angle) * 1000) / 1000 + 0, dir: PAD_DIRS[sector] };
 }
 
 export class DoublePushRun {

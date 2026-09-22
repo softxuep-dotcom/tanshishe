@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StreetGame } from './simulation.ts';
-import { AttackHold, DoublePushRun, readStick } from './touch-input.ts';
+import { AttackHold, DoublePushRun, readDpad } from './touch-input.ts';
 const advance = (g, seconds) => { for (let t=0;t<seconds;t+=1/120) g.update(1/120); };
 const game = () => { const g=new StreetGame();g.startTraining('chen','tank',1);g.freezeEnemies=true;g.enemies[0].x=g.hero.x+28;g.enemies[0].y=g.hero.y;return g; };
 
@@ -80,11 +80,13 @@ test('dodge buffers after attacks, allows follow-up attack and pauses with the s
  advance(g,.19);g.requestAction('attack');advance(g,.16);assert.equal(g.hero.pose,'punch');
 });
 
-test('stick filters drift and retains analog walking without automatic outer-ring sprint',()=>{
- assert.equal(readStick(3,2,50).x,0);
- assert.ok(readStick(35,0,50).x>0);
- assert.equal(readStick(55,0,50).x,1);
- assert.deepEqual(readStick(0,0,50),{x:0,y:0,knobX:0,knobY:0});
+test('d-pad ignores its centre, snaps to eight directions and always walks at full speed',()=>{
+ assert.deepEqual(readDpad(3,2,50),{x:0,y:0,dir:''});
+ assert.deepEqual(readDpad(0,0,50),{x:0,y:0,dir:''});
+ assert.deepEqual(readDpad(15,0,50),readDpad(55,0,50));
+ assert.deepEqual(readDpad(30,5,50),{x:1,y:0,dir:'r'});
+ assert.deepEqual(readDpad(5,-30,50),{x:0,y:-1,dir:'u'});
+ assert.deepEqual(readDpad(-30,30,50),{x:-.707,y:.707,dir:'dl'});
 });
 test('same-direction double push starts running and holding preserves it',()=>{
  for(const direction of [-1,1]) {

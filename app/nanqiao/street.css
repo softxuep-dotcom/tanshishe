@@ -454,6 +454,29 @@
 .street-stick small { position: absolute; bottom: -19px; white-space: nowrap; font-size: 10px; color: var(--text-2); pointer-events: none; }
 .street-stick.running { border-color: var(--amber); box-shadow: 0 0 0 4px #f1bf7730; }
 .street-stick.running small { color: var(--amber-2); }
+/* TMNT 手机版式的数字方向键：固定位置、只认按在十字上的手指、按下的方向亮起 */
+.street-stick.street-dpad { background: none; border: 0; border-radius: 0; box-shadow: none; opacity: .9; }
+.street-dpad::before { display: none; }
+.street-dpad i, .street-dpad b { position: absolute; width: 34%; height: 34%; border-radius: 0; pointer-events: none; }
+.street-dpad i {
+  display: grid; place-items: center;
+  background: #b9cf3a; border: 3px solid #1c2319; box-shadow: inset 0 -4px 0 #7f9427;
+}
+.street-dpad i::after { content: ''; border: 7px solid transparent; }
+.street-dpad .u { left: 33%; top: 0; border-bottom: 0; }
+.street-dpad .d { left: 33%; bottom: 0; border-top: 0; }
+.street-dpad .l { left: 0; top: 33%; border-right: 0; }
+.street-dpad .r { right: 0; top: 33%; border-left: 0; }
+.street-dpad .u::after { border-bottom-color: #27311f; border-top-width: 0; }
+.street-dpad .d::after { border-top-color: #27311f; border-bottom-width: 0; }
+.street-dpad .l::after { border-right-color: #27311f; border-left-width: 0; }
+.street-dpad .r::after { border-left-color: #27311f; border-right-width: 0; }
+.street-dpad b { left: 33%; top: 33%; background: #f4f1df; box-shadow: inset 0 0 0 3px #1c2319; }
+.street-dpad[data-dir*='u'] .u, .street-dpad[data-dir*='d'] .d,
+.street-dpad[data-dir*='l'] .l, .street-dpad[data-dir*='r'] .r { background: #eaf96c; box-shadow: inset 0 3px 0 #7f9427; }
+.street-dpad.running i { background: #f1bf77; }
+.street-dpad.running[data-dir*='l'] .l, .street-dpad.running[data-dir*='r'] .r { background: #ffd89a; }
+
 
 .street-control-note { font-size: 12px; line-height: 1.9; color: var(--text-2); }
 .street-control-note b { color: var(--amber-2); letter-spacing: 1px; }
