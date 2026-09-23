@@ -122,9 +122,9 @@ export default function StreetPage() {
   const bossState = !boss ? ''
     : bossOpen ? `破绽 ${boss.vulnerable.toFixed(1)}s`
     : boss.motion !== 'grounded' ? '倒地恢复'
-    : boss.guard > 0 ? '侧移中 · 减伤 25%'
-    : boss.wind > 0 && bossMove ? `${MOVE_LABELS[bossMove]}预警 · 减伤 25%`
-    : '防御减伤 25%';
+    : boss.guard > 0 ? '侧移中 · 霸体'
+    : boss.wind > 0 && bossMove ? `${MOVE_LABELS[bossMove]}预警 · 霸体`
+    : '霸体 · 破绽里才打得出硬直';
   const waveHint = sim.training ? `陪练剩余 ${sim.remainingEnemies} · 击倒 ${sim.kills}`
     : `剩余 ${sim.remainingEnemies}${sim.pendingEnemies ? ` · 待援 ${sim.pendingEnemies}` : ''}`;
   const shellStyle = { '--role': roleColor(sim.role) } as CSSProperties;
@@ -151,7 +151,7 @@ export default function StreetPage() {
         <h2>桥下练习场</h2><p className="street-note">切换陪练会清除当前敌人；重置会恢复双方状态。</p>
         <div className="training-rows">
           {PLAYABLE.length > 1 && <label><span>角色</span><select aria-label="角色" value={sim.role} onChange={e => { sim.role = e.target.value as Role; sim.resetTraining(); sim.paused = true; refresh(); }}>{PLAYABLE.map(id => <option key={id} value={id}>{HEROES[id].name}</option>)}</select></label>}
-          <label><span>陪练</span><select aria-label="陪练" value={sim.trainingEnemy} onChange={e => { sim.setTrainingOpponents(e.target.value as EnemyKind, sim.trainingCount); refresh(); }}><option value="punk">街头拳手</option><option value="runner">游斗快手</option><option value="tank">壮汉</option><option value="slinger">投掷手</option><option value="boss">铁头 Boss</option><option value="longleg">长腿 Boss</option><option value="luchuan">陆川 Boss</option><option value="hanxiao">韩骁 Boss</option></select></label>
+          <label><span>陪练</span><select aria-label="陪练" value={sim.trainingEnemy} onChange={e => { sim.setTrainingOpponents(e.target.value as EnemyKind, sim.trainingCount); refresh(); }}><option value="punk">街头拳手</option><option value="runner">游斗快手</option><option value="tank">壮汉</option><option value="slinger">投掷手</option><option value="blocker">格挡兵</option><option value="grabber">扑抓兵</option><option value="boss">铁头 Boss</option><option value="longleg">长腿 Boss</option><option value="luchuan">陆川 Boss</option><option value="hanxiao">韩骁 Boss</option></select></label>
           <label><span>数量</span><select aria-label="数量" value={sim.trainingCount} onChange={e => { sim.setTrainingOpponents(sim.trainingEnemy, Number(e.target.value)); refresh(); }}>{[1,2,3,4].map(n => <option key={n}>{n}</option>)}</select></label>
         </div>
         <div className="training-options">{([['godMode','无敌'],['freezeEnemies','陪练不行动'],['showRanges','显示判定范围']] as const).map(([key,label]) => <label key={key} className="switch"><input type="checkbox" checked={sim[key]} onChange={e => { sim[key] = e.target.checked; refresh(); }}/><i aria-hidden="true" /><span>{label}</span></label>)}</div>

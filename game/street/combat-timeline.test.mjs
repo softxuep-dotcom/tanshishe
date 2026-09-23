@@ -202,3 +202,24 @@ test('jumping out of a run slides instead, tripping whoever is standing there',(
  const start = g.hero.x; g.hitstop = 0; advance(g, .3);
  assert.ok(g.hero.x - start > 45, 'the slide travels'); assert.equal(e.motion, 'launched');
 });
+
+test('a dodge cancels your own recovery but never your windup or active frames',()=>{
+ const g = arena();
+ g.requestAction('attack'); advance(g, .03);
+ assert.equal(g.attackPhase, 'windup'); g.requestAction('dodge');
+ assert.equal(g.hero.pose, 'punch', 'the windup is committed');
+ const c = arena(); c.requestAction('attack'); c.hitstop = 0; advance(c, .14);
+ assert.equal(c.attackPhase, 'recover'); c.requestAction('dodge');
+ assert.equal(c.hero.pose, 'dodge'); assert.equal(c.currentAttack, null);
+});
+
+test('attacking out of a dodge lunges forward and opens a fresh chain',()=>{
+ const g = arena(), e = g.enemies[0];
+ g.hero.x = e.x - 95; g.requestAction('dodge'); advance(g, .35);
+ assert.ok(g.dodgeFollow > 0); const before = g.hero.x;
+ g.requestAction('attack'); assert.equal(g.currentAttack.reach, 56);
+ assert.equal(g.dodgeFollow, 0, 'the follow-up window is spent');
+ g.hitstop = 0; advance(g, .14); assert.ok(g.hero.x - before > 25, 'the lunge travels');
+ const plain = arena(); plain.requestAction('attack');
+ assert.ok(plain.currentAttack.reach < 56, 'a normal opener does not lunge');
+});

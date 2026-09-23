@@ -31,7 +31,7 @@ export const STORY: readonly ChapterScript[] = [
     },
     boss: shared({
       kicker: '关底 / 铁头', title: '「这条街，我说了算。」',
-      tutorial: ['红色预警后铁头会冲撞，上下走位或闪避躲开。', '冲撞结束，绿圈破绽开放 1.2 秒；此时攻击吃满伤害。'],
+      tutorial: ['红色预警后铁头会冲撞，上下走位或闪避躲开。', '冲撞结束，绿圈破绽开放 1.2 秒；只有破绽里才能把它打出硬直和击飞。'],
       button: '那就让开。',
     }, [
       { who: '铁头', text: '「陆川现在吃黑桥的饭，轮得到你们管？」' },
@@ -57,7 +57,7 @@ export const STORY: readonly ChapterScript[] = [
     },
     boss: perRole({
       kicker: '关底 / 长腿', title: '「他没地方住的时候，是韩哥收留的。」',
-      tutorial: ['长腿蓄力后踢向前方，上下走位或闪避躲开。', '收腿后绿圈破绽开放 0.95 秒；窗口外只能造成 25% 伤害。'],
+      tutorial: ['长腿蓄力后踢向前方，上下走位或闪避躲开。', '收腿后绿圈破绽开放 0.95 秒；破绽外它霸体不硬直，破绽里才能连段。'],
       button: '那就让他自己告诉我。',
     }, {
       chen: [
@@ -89,7 +89,7 @@ export const STORY: readonly ChapterScript[] = [
         { who: '打手', text: '「这边不通，换条路。找他的人，今晚都得等。」' },
         { who: HERO_TOKEN, text: '「我们找陆川。他在上面等着。」' },
       ],
-      tutorial: ['卷帘街窄，木箱仍可举起扔出。', '天桥上只有陆川，不会再有小兵插进来。'],
+      tutorial: ['举着胳膊的格挡兵正面打不动：走过去抓他、绕到背后，或者奔跑中跳跃滑铲。', '天桥上只有陆川，不会再有小兵插进来。'],
       button: '穿过商业街 →',
     },
     boss: perRole({
@@ -141,7 +141,7 @@ export const STORY: readonly ChapterScript[] = [
         { who: '陆川', text: '「他们只是来比赛的，让他们出去。」' },
         { who: HERO_TOKEN, text: '「你带他们走。这里交给我。」' },
       ],
-      tutorial: ['从后台打到擂台，三段全是黑桥的人。', '选手在开出口，陆川照顾伤员；上去的只有你。'],
+      tutorial: ['扑抓兵蹲下蓄力后会扑过来：闪避或跳开。被抓住就连按任意键挣脱，挣脱后它会愣一下。', '选手在开出口，陆川照顾伤员；上去的只有你。'],
       button: '从后台打上去 →',
     },
     boss: perRole({

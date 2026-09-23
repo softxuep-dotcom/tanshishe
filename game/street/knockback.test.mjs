@@ -58,12 +58,15 @@ test('the earned uppercut launches and can knock a second enemy down along its p
   advance(g, .6); assert.equal(b.hp, 975); assert.notEqual(b.motion, 'grounded');
 });
 
-test('fresh dash launches both bosses immediately and shares delayed collateral hits', () => {
+test('a dash launches a boss only inside its window, and a launched boss still bowls others over', () => {
   for (const kind of ['boss', 'longleg']) {
-    const g = arena(2), [a, b] = g.enemies; a.kind = kind; b.x = a.x + 90;
+    const g = arena(2), [a, b] = g.enemies; a.kind = kind; b.x = a.x + 90; a.vulnerable = 1;
     g.mx = 1; g.sprint = true; g.requestAction('attack'); advance(g, .07); g.clearInput();
-    assert.equal(a.motion, 'launched'); assert.equal(a.hp, 993); assert.equal(b.hp, 1000);
+    assert.equal(a.motion, 'launched'); assert.equal(a.hp, 972); assert.equal(b.hp, 1000);
     advance(g, .5); assert.equal(b.hp, 975);
+    const armored = arena(2), [c, d] = armored.enemies; c.kind = kind; d.x = c.x + 90;
+    armored.mx = 1; armored.sprint = true; armored.requestAction('attack'); advance(armored, .07); armored.clearInput();
+    assert.equal(c.motion, 'grounded'); assert.equal(c.hp, 972); advance(armored, .5); assert.equal(d.hp, 1000);
   }
 });
 

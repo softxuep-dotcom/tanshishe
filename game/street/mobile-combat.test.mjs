@@ -5,12 +5,13 @@ import { AttackHold, DoublePushRun, readDpad } from './touch-input.ts';
 const advance = (g, seconds) => { for (let t=0;t<seconds;t+=1/120) g.update(1/120); };
 const game = () => { const g=new StreetGame();g.startTraining('chen','tank',1);g.freezeEnemies=true;g.enemies[0].x=g.hero.x+28;g.enemies[0].y=g.hero.y;return g; };
 
-test('run attack launches immediately on contact, including bosses, and misses do not launch',()=>{
+test('run attack launches on contact; an armored boss takes the full hit but stays standing; misses do not launch',()=>{
  for (const kind of ['tank','boss']) {
   const g=game();const enemy=g.enemies[0];enemy.kind=kind;enemy.hp=1000;
   g.mx=1;g.sprint=true;g.requestAction('attack');assert.notEqual(enemy.pose,'launched');
-  advance(g,.08);assert.equal(enemy.pose,'launched');assert.ok(enemy.vx>300);
-  assert.equal(enemy.motion,'launched');assert.equal(enemy.hp,kind === 'boss' ? 993 : 972);assert.ok(g.hitstop>0);
+  advance(g,.08);assert.equal(enemy.hp,972);assert.ok(g.hitstop>0);
+  if(kind==='boss'){assert.equal(enemy.motion,'grounded','no launch outside the punish window');continue;}
+  assert.equal(enemy.pose,'launched');assert.ok(enemy.vx>300);assert.equal(enemy.motion,'launched');
   advance(g,1.3);assert.equal(enemy.pose,'idle');assert.equal(enemy.stun,0);assert.equal(enemy.height,0);
  }
  const miss=game();miss.enemies[0].y+=40;miss.mx=1;miss.sprint=true;miss.requestAction('attack');advance(miss,.1);
@@ -77,7 +78,9 @@ test('dodge buffers after attacks, allows follow-up attack and pauses with the s
  const g=game();g.hero.timer=.1;g.requestAction('dodge');advance(g,.12);assert.equal(g.hero.pose,'dodge');
  const x=g.hero.x,cooldown=g.dodgeCooldown;g.paused=true;advance(g,1);
  assert.equal(g.hero.x,x);assert.equal(g.dodgeCooldown,cooldown);g.paused=false;
- advance(g,.19);g.requestAction('attack');advance(g,.16);assert.equal(g.hero.pose,'punch');
+ advance(g,.19);g.requestAction('attack');advance(g,.16);assert.equal(g.hero.pose,'dash','the follow-up is the dodge lunge');
+ const late=game();late.requestAction('dodge');advance(late,.34+.36);assert.equal(late.dodgeFollow,0);
+ late.requestAction('attack');advance(late,.16);assert.equal(late.hero.pose,'punch','after the window it is a normal punch');
 });
 
 test('d-pad ignores its centre, snaps to eight directions and always walks at full speed',()=>{

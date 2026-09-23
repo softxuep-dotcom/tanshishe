@@ -116,21 +116,21 @@ test('longleg has an active kick interval before its punish window', () => {
   advance(g, .1); assert.equal(e.vulnerable, 0); advance(g, .1); assert.ok(e.vulnerable > 0);
 });
 
-test('boss damage is quartered when guarded and full in recovery, but regular enemies are unchanged', () => {
+test('bosses take full damage everywhere but only flinch inside their window', () => {
   for (const kind of ['boss', 'longleg']) {
-    const guarded = bossArena(kind), a = guarded.enemies[0]; guarded.hit(a, 20, 0, { amount: 0 });
-    assert.equal(a.hp, a.max - 5); assert.ok(guarded.sparks.some(s => s.text === '减伤 5'));
+    const armored = bossArena(kind), a = armored.enemies[0]; armored.hit(a, 20, 0, { amount: 0 });
+    assert.equal(a.hp, a.max - 20); assert.equal(a.stun, 0); assert.ok(armored.sparks.some(s => s.text === '霸体 20'));
     const open = bossArena(kind), b = expose(open); open.hit(b, 20, 0, { amount: 0 });
-    assert.equal(b.hp, b.max - 20); assert.ok(open.sparks.some(s => s.text === '20'));
+    assert.equal(b.hp, b.max - 20); assert.ok(b.stun > 0); assert.ok(open.sparks.some(s => s.text === '20'));
   }
   const g = story(), e = g.enemies[0]; g.hit(e, 20, 0); assert.equal(e.hp, e.max - 20);
 });
 
-test('ordinary hitstun and interrupted telegraphs do not count as boss vulnerability', () => {
+test('armored hits neither interrupt a boss telegraph nor open its window', () => {
   for (const kind of ['boss', 'longleg']) {
     const g = bossArena(kind), e = g.enemies[0]; g.update(.01); assert.ok(e.wind > 0);
-    g.hit(e, 20, 0); assert.equal(e.wind, 0); assert.ok(e.stun > 0); assert.equal(e.vulnerable, 0);
-    assert.equal(g.isBossVulnerable(e), false); g.hit(e, 20, 0); assert.equal(e.hp, e.max - 10);
+    const wind = e.wind; g.hit(e, 20, 0); assert.equal(e.wind, wind); assert.equal(e.stun, 0);
+    assert.equal(e.vulnerable, 0); assert.equal(g.isBossVulnerable(e), false); assert.equal(e.hp, e.max - 20);
   }
 });
 
@@ -139,13 +139,14 @@ test('hits do not refresh a boss window or shorten its remaining recovery lock',
   const remaining = e.vulnerable; g.hit(e, 20, 0, { amount: 0 });
   assert.equal(e.vulnerable, remaining); assert.ok(e.stun >= remaining); g.hitstop = 0;
   advance(g, remaining + .01); assert.equal(e.vulnerable, 0);
-  const hp = e.hp; g.hit(e, 20, 0, { amount: 0 }); assert.equal(e.hp, hp - 5);
+  const hp = e.hp; g.hit(e, 20, 0, { amount: 0 }); assert.equal(e.hp, hp - 20); assert.equal(e.stun, 0, 'armored again once the window closes');
 });
 
-test('bosses remain launchable while guarded, and knocked-down recovery cannot fabricate a window', () => {
+test('armored bosses cannot be launched, and getting up from a window knockdown opens no new window', () => {
   for (const kind of ['boss', 'longleg']) {
     const g = bossArena(kind), e = g.enemies[0]; g.freezeEnemies = true;
-    g.hit(e, 28, 350, { amount: 1200, launchSpeed: 200 }); assert.equal(e.motion, 'launched'); assert.equal(e.hp, e.max - 7);
+    g.hit(e, 28, 350, { amount: 1200, launchSpeed: 200 }); assert.equal(e.motion, 'grounded'); assert.equal(e.hp, e.max - 28);
+    e.vulnerable = .2; g.hit(e, 28, 350, { amount: 1200, launchSpeed: 200 }); assert.equal(e.motion, 'launched');
     advance(g, 1.5); assert.equal(e.motion, 'grounded'); assert.equal(e.vulnerable, 0);
     assert.equal(g.isBossVulnerable(e), false);
   }
@@ -158,9 +159,9 @@ test('launching within a window does not pause or extend it through the get-up c
   assert.equal(e.vulnerable, 0); assert.equal(g.isBossVulnerable(e), false);
 });
 
-test('specials, crates and flying-body collateral use the same boss damage rule', () => {
+test('specials, crates and flying-body collateral deal full damage to a boss, window or not', () => {
   for (const vulnerable of [false, true]) {
-    const factor = vulnerable ? 1 : .25;
+    const factor = 1;
     const special = bossArena('boss'), a = special.enemies[0]; special.freezeEnemies = true; a.vulnerable = vulnerable ? 1 : 0;
     special.requestAction('special'); assert.equal(a.hp, a.max - 40 * factor);
     const crate = bossArena('boss'), b = crate.enemies[0]; crate.freezeEnemies = true; b.vulnerable = vulnerable ? 1 : 0;

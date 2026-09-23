@@ -156,7 +156,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       const moving = isHero ? Math.hypot(sim.mx, sim.my) > .1 : f.timer < .9 && f.stun <= 0;
       const stride = moving && f.pose === 'idle' ? Math.sin(sim.time * (isHero && sim.running ? 21 : 13) + f.id) * (isHero && sim.running ? 7 : 5) : 0;
       const y = ground - f.height - (f.kind==='longleg'?5:0); const w = big ? 24 : 17; const face = f.face;
-      const ENEMY_SHIRTS: Record<string, number> = { longleg: 0x6ec9bd, slinger: 0x7797af, boss: 0xb54f48, runner: 0x9981b0, tank: 0x6f8a73, luchuan: 0xd4785f, hanxiao: 0x4a5a86 };
+      const ENEMY_SHIRTS: Record<string, number> = { longleg: 0x6ec9bd, slinger: 0x7797af, boss: 0xb54f48, runner: 0x9981b0, tank: 0x6f8a73, blocker: 0x8a8f5c, grabber: 0xa8683f, luchuan: 0xd4785f, hanxiao: 0x4a5a86 };
       let shirt = isHero ? HEROES[sim.role].color : ENEMY_SHIRTS[f.kind] ?? 0x74849b;
       if (f.pose === 'hurt' && f.poseTime > .15) shirt = 0xffe9c6;
       if (isHero && (sim.running || f.pose === 'dash' || f.pose === 'slide')) {
@@ -164,7 +164,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         g.lineBetween(x - face * 15, ground - 22, x - face * 35, ground - 22);
         g.lineBetween(x - face * 18, ground - 12, x - face * 43, ground - 12);
       }
-      if (f.pose === 'hurt') shirt = 0xf5e4bd;
+      if (f.pose === 'hurt' || f.pose === 'held') shirt = 0xf5e4bd;
       const alpha = f.hp <= 0 ? f.dead / .65 : f.entryTime > 0 ? .4 : isHero && f.inv > 0 && Math.floor(sim.time * 18) % 2 ? .45 : 1;
       if (f.entryTime > 0) this.label(x - 15, y - 70, '入场中', 8, '#ffe093');
       if (sim.isBossVulnerable(f)) { g.lineStyle(2, 0x8adbc1, .8); g.strokeEllipse(x, ground + 1, 43, 13); }
@@ -231,7 +231,9 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if(f.kind==='slinger'){r(-9,-58,18,8,0xbea15d);r(7,-53,9,3,0xbea15d);r(-12,-17,9,12,0x9a7753);}
       if(f.kind==='longleg')r(-8,-52,18,3,0xe88966);
       if (big) { r(-7, -41, 15, 3, 0x3e3031); r(-11, -33, 7, 17, 0xdba077); }
-      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash'].includes(f.pose);
+      // Raised forearm guard, dropped while it winds up or flinches.
+      if (f.kind === 'blocker' && f.wind <= 0 && f.stun <= 0 && f.pose !== 'punch') { r(9, -48, 7, 28, 0x5b6146); r(10, -47, 5, 4, 0xc8c09a); }
+      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash', 'lunge'].includes(f.pose);
       r(-w / 2 - 4, -32, 6, 14, shirt); r(-w / 2 - 4, -20, 6, 7, 0xe0ab80);
       if (attack && isHero && sim.attackPhase === 'recover') {
         r(6, -33, 10, 7, shirt); r(13, -31, 8, 9, 0xe0ab80);
@@ -243,9 +245,10 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         else { r(8, -33, 21, 7, shirt); r(27, -35, 9, 10, 0xe0ab80); }
         g.lineStyle(2, 0xfbe6b1, .6); g.lineBetween(x + face * 20, y - 23, x + face * 39, y - 27);
       } else { r(w / 2 - 2, -32, 7, 13, shirt); r(w / 2, -22, 7, 7, 0xe0ab80); }
-      if (isHero && f.pose === 'grab') { r(6,-35,18,7,shirt); r(22,-36,8,8,0xe0ab80); r(6,-26,18,7,shirt); r(22,-27,8,8,0xe0ab80); }
+      if (f.pose === 'grab') { r(6,-35,18,7,shirt); r(22,-36,8,8,0xe0ab80); r(6,-26,18,7,shirt); r(22,-27,8,8,0xe0ab80); }
       if(isHero && sim.carried){r(-15,-58,6,30,shirt);r(10,-58,6,30,shirt);r(-15,-64,6,7,0xe0ab80);r(10,-64,6,7,0xe0ab80);}
       if (!isHero && f.hp < f.max) { g.fillStyle(0x172331); g.fillRect(x - 13, y - 62, 26, 3); g.fillStyle(0xe89d77); g.fillRect(x - 13, y - 62, 26 * f.hp / f.max, 3); }
+      if (isHero && sim.heldBy) this.label(x - 22, y - 82, '连按挣脱', 9, '#ffb27a');
       if (isHero) { g.fillStyle(HEROES[sim.role].color); g.fillTriangle(x - 4, y - 67, x + 4, y - 67, x, y - 63); }
     }
   }

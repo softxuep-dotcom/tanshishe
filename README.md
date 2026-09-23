@@ -34,9 +34,13 @@ WASD / 方向键移动，J 连打，K / 空格跳跃，U 闪避，I 消耗 50 �
 
 第三、四关原型验证：114项模拟测试（新增13项在 `game/street/chapter.test.mjs`）、TypeScript检查、Pages构建通过。新增测试覆盖四关串联与到此为止、第三第四关全流程通关、失败重试留在本关、两个Boss的招式轮换与必然开放的破绽、1/30～1/120帧率下的破绽时长、减伤倍率、过半血的连拳段数、练习场Boss名字、剧本对三个角色的完整覆盖。桌面浏览器已实际进入两关并确认背景、HUD和陆川的侧移／破绽表现；未做真机手感验收，也未在触屏上测试新关卡。Pages工作流已纳入全部六组战斗测试。
 
+小兵 AI 参考 OpenBOR、Downtown Beatdown、punchy、Fists of Fury 重做，参数都在 `encounter-data.ts` 的 `MOB_AI`：每次出手、挨打或计划到期后按权重重抽"压上 / 喘口气 / 绕背"，绕背偏好玩家身后的攻击位；压上 3–4.5 秒还没出手就放弃改喘口气；冷却在区间内随机，一屏小兵不再同步出拳；倒地起身时玩家还站在旁边，会用很短前摇起身反击；壮汉先横向对齐再管纵深；等待位按敌人固定抖动。投掷手按玩家纵向速度算提前量瞄准将要走到的那条线，并退到自己一侧远处。随机数带种子，每局开局重置，测试和回放可复现。
+
+两种新小兵：**格挡兵**（第三关起）正面举臂格挡，普通拳打上去被弹开、连段断掉，并会很快盾击反击；抓他、绕到背后（它转身有 0.35 秒延迟）、滑铲或奔跑重击都能破。**扑抓兵**（第四关起）保持距离、蹲下蓄力 0.55 秒后前扑，扑中就抓住你每 0.4 秒掐 5 点血，1.4 秒后摔出；连按任意键挣脱，挣脱后它会愣 0.7 秒；闪避或跳跃能让它扑空，扑空也会愣住。练习场可选这两种。
+
 出兵配置集中在 `game/street/encounter-data.ts`。四章分别为10／11／12／13个小兵，每章三波同时存活上限为2／3／3、2／3／3、3／3／3、3／4／4；首次填到上限，有空位后等待600ms逐个补人。活着的击飞／倒地敌人和入场敌人仍占上限，死亡身体不占。增援在距玩家至少90逻辑单位的战区边缘选择较空位置，450ms入场提示期间不能攻击、受击、被抓或预约围攻位。队列空、活人全灭且死亡表现结束后才能前进，HUD剩余数包含待援；练习场维持手动数量，不自动补兵。
 
-第四批Boss破绽：铁头完成冲撞后开放1.2秒，长腿长踢有效段180ms结束后开放950ms。破绽中承受完整伤害，其他时候只承受25%；普通受击硬直或被打断的蓄力不产生破绽。普通拳、绝招、投箱、飞行撞人统一走此倍率，Boss仍不能被抓投，仍能被重击击飞，不新增霸体。命中不会刷新破绽或缩短其行动锁，击飞／倒地也不延长破绽；暂停与命中停顿冻结计时。血条颜色、脚底绿圈、倒计时及HUD文字区分可反击窗口和减伤状态。
+第四批Boss破绽：铁头完成冲撞后开放1.2秒，长腿长踢有效段180ms结束后开放950ms。（已改）Boss 任何时候都吃满伤害，但破绽外有霸体：不硬直、招式不被打断、不会被击飞；只有破绽里才能打出硬直、连段和击飞。Boss 仍不能被抓投。命中不会刷新破绽或缩短其行动锁，击飞／倒地也不延长破绽；暂停与命中停顿冻结计时。血条颜色、脚底绿圈、倒计时及HUD文字区分可反击窗口和减伤状态。
 
 普通近战敌人使用围攻位：左右各一个攻击位，外围分散等待位；预约位置并到位后才能起手，同时保留全场最多两名敌人蓄力／冲锋／长踢的限制。攻击后退回等待位，受击／击飞／死亡释放位置供其他敌人补上。越界位置不分配，玩家大幅移动后重新分配；换边时绕过玩家。远程兵和两个Boss不使用普通近战站位。
 
@@ -80,7 +84,7 @@ WASD / 方向键移动，J 连打，K / 空格跳跃，U 闪避，I 消耗 50 �
 ## 验证与构建
 
 ```sh
-node --experimental-strip-types --test game/street/simulation.test.mjs game/street/mobile-combat.test.mjs game/street/combat-timeline.test.mjs game/street/knockback.test.mjs game/street/encounter.test.mjs game/street/chapter.test.mjs
+node --experimental-strip-types --test game/street/simulation.test.mjs game/street/mobile-combat.test.mjs game/street/combat-timeline.test.mjs game/street/knockback.test.mjs game/street/encounter.test.mjs game/street/chapter.test.mjs game/street/enemy-ai.test.mjs
 npx tsc --noEmit
 npm run build:pages
 ```

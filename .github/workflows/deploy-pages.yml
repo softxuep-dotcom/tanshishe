@@ -23,7 +23,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: node --experimental-strip-types --test game/street/simulation.test.mjs game/street/mobile-combat.test.mjs game/street/combat-timeline.test.mjs game/street/knockback.test.mjs game/street/encounter.test.mjs game/street/chapter.test.mjs
+      - run: node --experimental-strip-types --test game/street/simulation.test.mjs game/street/mobile-combat.test.mjs game/street/combat-timeline.test.mjs game/street/knockback.test.mjs game/street/encounter.test.mjs game/street/chapter.test.mjs game/street/enemy-ai.test.mjs
       - run: npx tsc --noEmit
       - uses: actions/configure-pages@v5
       - run: npm run build:pages

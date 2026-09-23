@@ -42,7 +42,7 @@ test('every chapter declares a distinct boss, and the roster data lines up with 
   assert.deepEqual(CHAPTERS.map(c => c.boss), ['boss', 'longleg', 'luchuan', 'hanxiao']);
   assert.equal(new Set(CHAPTERS.map(c => c.name)).size, CHAPTER_COUNT);
   assert.equal(new Set(CHAPTERS.map(c => c.theme)).size, CHAPTER_COUNT);
-  assert.deepEqual(CHAPTERS.map(c => enemyHealth(c.boss)), [320, 320, 360, 420]);
+  assert.deepEqual(CHAPTERS.map(c => enemyHealth(c.boss)), [500, 500, 560, 650]);
   for (let chapter = 0; chapter < CHAPTER_COUNT; chapter++) {
     const g = new StreetGame(); g.start('chen', chapter);
     assert.equal(g.chapterName, CHAPTERS[chapter].name);
@@ -134,14 +134,14 @@ test('luchuan answers his sidestep with a lunge, and a whiffed lunge still opens
   assert.equal(g.hero.hp, g.hero.max);
 });
 
-test('both new bosses take a quarter damage outside the window and full damage inside it', () => {
+test('both new bosses take full damage but only flinch inside their window', () => {
   for (const kind of ['luchuan', 'hanxiao']) {
     const { g, e } = duel(kind);
     e.hp = e.max; g.hit(e, 100, 0);
-    assert.equal(e.hp, e.max - 25);
+    assert.equal(e.hp, e.max - 100); assert.equal(e.stun, 0);
     e.hp = e.max; e.vulnerable = .5; e.motion = 'grounded';
     g.hit(e, 100, 0);
-    assert.equal(e.hp, e.max - 100);
+    assert.equal(e.hp, e.max - 100); assert.ok(e.stun > 0);
   }
 });
 
