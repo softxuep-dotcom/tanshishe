@@ -42,7 +42,7 @@ test('every chapter declares a distinct boss, and the roster data lines up with 
   assert.deepEqual(CHAPTERS.map(c => c.boss), ['boss', 'longleg', 'luchuan', 'hanxiao']);
   assert.equal(new Set(CHAPTERS.map(c => c.name)).size, CHAPTER_COUNT);
   assert.equal(new Set(CHAPTERS.map(c => c.theme)).size, CHAPTER_COUNT);
-  assert.deepEqual(CHAPTERS.map(c => enemyHealth(c.boss)), [330, 330, 360, 420]);
+  assert.deepEqual(CHAPTERS.map(c => enemyHealth(c.boss)), [320, 320, 360, 420]);
   for (let chapter = 0; chapter < CHAPTER_COUNT; chapter++) {
     const g = new StreetGame(); g.start('chen', chapter);
     assert.equal(g.chapterName, CHAPTERS[chapter].name);

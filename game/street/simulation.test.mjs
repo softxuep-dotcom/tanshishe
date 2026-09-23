@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { StreetGame } from './simulation.ts';
+import { StreetGame, enemyHealth } from './simulation.ts';
 const advance = (g, secs) => { for(let t=0;t<secs;t+=1/120) g.update(1/120); };
 const start = (role='chen') => { const g=new StreetGame();g.start(role);g.proceed();return g; };
 const clearEncounter = g => {
@@ -16,6 +16,8 @@ const meleeArena = () => {
  const g=new StreetGame();g.startTraining('chen','punk',4);g.hero.x=220;g.hero.y=199;
  g.enemies.forEach((e,i)=>{e.x=260+i*35;e.y=180+i*12;e.timer=0;});return g;
 };
+// Walk into the nearest grabbable enemy for one frame, then throw toward `dir` (0 = forward).
+const grabThrow = (g, dir = 0) => { const t = g.grabTarget; g.mx = Math.sign(t.x - g.hero.x); g.update(1 / 120); g.mx = dir; g.requestAction('attack'); };
 test('melee enemies reserve unique attack/waiting slots, no more than two start attacks',()=>{
  const g=meleeArena();const seen=new Set();
  for(let i=0;i<120*12;i++) {
@@ -104,7 +106,7 @@ test('punch only hits enemies in range and lane; pause blocks combat',()=>{
 });
 test('throw damages the target and enemies behind it, not distant enemies',()=>{
  const g=new StreetGame();g.startTraining('tuo','punk',3);g.freezeEnemies=true;const [a,b,c]=g.enemies;a.x=g.hero.x+22;a.y=g.hero.y;b.x=a.x+60;b.y=a.y;c.x=a.x+200;c.y=a.y;
- g.action('throw');assert.equal(a.hp,a.max-42);assert.equal(b.hp,b.max);assert.equal(a.pose,'thrown');
+ grabThrow(g);assert.equal(a.hp,a.max-42);assert.equal(b.hp,b.max);assert.equal(a.pose,'thrown');
  advance(g,.35);assert.equal(b.hp,b.max-25);assert.equal(c.hp,c.max);assert.equal(b.motion,'launched');
 });
 test('special requires rage and jump avoids ground hits',()=>{
@@ -153,18 +155,25 @@ test('cargo chapter completes all encounters and longleg boss',()=>{
 });
 test('crate can be lifted, put down, and thrown with lane-specific splash and supply',()=>{
  const g=new StreetGame();g.startTraining('chen','tank',3);g.freezeEnemies=true;g.hero.x=143;g.hero.y=211;g.hero.face=1;
- g.action('throw');assert.ok(g.carried);assert.equal(g.crates.length,1);advance(g,.5);g.action('throw');assert.equal(g.carried,null);assert.equal(g.crates.length,2);
- advance(g,.3);g.action('throw');assert.ok(g.carried);advance(g,.5);
+ g.action('attack');assert.ok(g.carried);assert.equal(g.crates.length,1);advance(g,.5);
  const [a,b,c]=g.enemies;a.x=245;a.y=211;b.x=270;b.y=212;c.x=260;c.y=166;g.hero.hp=80;
- g.action('attack');assert.equal(g.carried,null);assert.equal(g.shots.length,1);advance(g,.6);assert.equal(a.hp,50);assert.equal(b.hp,50);assert.equal(c.hp,86);assert.equal(g.snacks.length,1);
+ g.action('attack');assert.equal(g.carried,null);assert.equal(g.shots.length,1);advance(g,.6);assert.equal(a.hp,enemyHealth('tank')-36);assert.equal(b.hp,enemyHealth('tank')-36);assert.equal(c.hp,enemyHealth('tank'));assert.equal(g.snacks.length,1);
  g.hero.x=g.snacks[0].x;g.hero.y=g.snacks[0].y;advance(g,.05);assert.equal(g.hero.hp,110);assert.equal(g.snacks.length,0);
 });
-test('close enemy takes priority over crate; bosses cannot be grabbed',()=>{
- const g=new StreetGame();g.startTraining('chen','punk',1);g.hero.x=143;g.hero.y=211;g.enemies[0].x=166;g.enemies[0].y=211;g.action('throw');assert.equal(g.carried,null);assert.equal(g.enemies[0].pose,'thrown');
- g.setTrainingOpponents('longleg',1);g.hero.timer=0;g.enemies[0].x=166;g.enemies[0].y=211;g.action('throw');assert.ok(g.carried);assert.equal(g.enemies[0].hp,330);
+test('walking into an enemy grabs it instead of a crate; attack throws; bosses cannot be grabbed',()=>{
+ const g=new StreetGame();g.startTraining('chen','punk',1);g.freezeEnemies=true;g.hero.x=143;g.hero.y=211;const e=g.enemies[0];e.x=166;e.y=211;
+ g.mx=1;g.update(1/60);assert.equal(g.grabbed,e);assert.equal(g.hero.pose,'grab');
+ g.mx=0;g.requestAction('attack');assert.equal(g.carried,null);assert.equal(e.pose,'thrown');assert.equal(g.grabbed,null);
+ g.setTrainingOpponents('longleg',1);g.hero.timer=0;g.enemies[0].x=166;g.enemies[0].y=211;g.mx=1;g.update(1/60);assert.equal(g.grabbed,null);assert.equal(g.enemies[0].hp,enemyHealth('longleg'));
+});
+test('holding attack never grabs; a grab lets go on timeout or when you jump',()=>{
+ const g=new StreetGame();g.startTraining('chen','punk',1);g.freezeEnemies=true;g.hero.x=143;g.hero.y=211;const e=g.enemies[0];e.x=166;e.y=211;e.hp=e.max=9999;
+ g.held=true;g.mx=1;g.update(1/60);assert.equal(g.grabbed,null);assert.equal(g.hero.pose,'punch');
+ g.held=false;advance(g,.5);assert.equal(g.grabbed,e);g.mx=0;advance(g,1.3);assert.equal(g.grabbed,null);
+ e.x=g.hero.x+24;e.y=g.hero.y;g.mx=1;g.update(1/60);assert.equal(g.grabbed,e);g.requestAction('jump');assert.equal(g.grabbed,null);assert.equal(g.hero.motion,'takeoff');
 });
 test('damage drops carried crate and training reset clears projectiles',()=>{
- const g=new StreetGame();g.startTraining('chen');g.hero.x=143;g.hero.y=211;g.action('throw');g.godMode=false;g.hurt(10,1);assert.equal(g.carried,null);assert.equal(g.crates.length,2);g.shots.push({x:200,y:211,vx:100,life:1,crate:false,snack:false});g.resetTraining();assert.equal(g.shots.length,0);assert.equal(g.crates.length,2);
+ const g=new StreetGame();g.startTraining('chen');g.hero.x=143;g.hero.y=211;g.action('attack');g.godMode=false;g.hurt(10,1);assert.equal(g.carried,null);assert.equal(g.crates.length,2);g.shots.push({x:200,y:211,vx:100,life:1,crate:false,snack:false});g.resetTraining();assert.equal(g.shots.length,0);assert.equal(g.crates.length,2);
 });
 test('cans respect crate cover and actual jump height',()=>{
  const g=new StreetGame();g.startTraining('chen');g.freezeEnemies=true;g.godMode=false;g.hero.x=100;g.hero.y=211;

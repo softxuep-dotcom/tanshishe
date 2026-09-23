@@ -132,7 +132,7 @@ test('fresh running attack dashes but held repeat does not repeatedly dash',()=>
  g.clearInput();assert.equal(g.running,false);assert.equal(g.sprint,false);
 });
 test('running is faster, but carrying and airborne movement cannot sprint',()=>{
- const walk=game(),run=game();walk.mx=1;run.mx=1;run.sprint=true;advance(walk,.2);advance(run,.2);
+ const walk=game(),run=game();walk.enemies[0].x=run.enemies[0].x=440;walk.mx=1;run.mx=1;run.sprint=true;advance(walk,.2);advance(run,.2);
  assert.ok(run.hero.x>walk.hero.x+8);
  run.carried={id:999,x:0,y:0,snack:false};assert.equal(run.running,false);
  run.carried=null;run.hero.motion='airborne';run.hero.height=25;assert.equal(run.running,false);
@@ -146,10 +146,10 @@ test('contact is checked at impact and attack does not hit twice',()=>{
  const g=game();g.requestAction('attack');g.enemies[0].y+=40;advance(g,.08);assert.equal(g.combo,0);
  const h=game();h.requestAction('attack');advance(h,.5);assert.equal(h.combo,1);
 });
-test('grab hint excludes bosses and air grabs, missed grab does not lock movement',()=>{
+test('auto-grab skips airborne heroes and bosses',()=>{
  const g=game();assert.equal(g.grabTarget,g.enemies[0]);g.hero.motion='airborne';g.hero.height=25;assert.equal(g.grabTarget,undefined);
- g.action('throw');assert.equal(g.enemies[0].hp,g.enemies[0].max);g.hero.motion='grounded';g.hero.height=0;
- g.enemies[0].kind='boss';assert.equal(g.grabTarget,undefined);g.crates=[];g.action('throw');assert.equal(g.hero.timer,0);
+ g.hero.motion='grounded';g.hero.height=0;g.enemies[0].kind='boss';assert.equal(g.grabTarget,undefined);
+ g.mx=Math.sign(g.enemies[0].x-g.hero.x);g.update(1/60);assert.equal(g.grabbed,null);assert.equal(g.enemies[0].hp,g.enemies[0].max);
 });
 test('third punch has stronger impact than the opener',()=>{
  const g=game();g.enemies[0].hp=1000;g.enemies[0].max=1000;
@@ -157,4 +157,19 @@ test('third punch has stronger impact than the opener',()=>{
  advance(g,.25);g.enemies[0].x=g.hero.x+28;g.requestAction('attack');advance(g,.32);
  g.enemies[0].x=g.hero.x+28;g.requestAction('attack');advance(g,.09);
  assert.equal(g.hero.pose,'uppercut');assert.ok(g.hitstop>light);assert.ok(g.enemies[0].vx>100);
+});
+
+test('attack lifts a crate only when nobody is in reach, and a held press cannot lift and throw',()=>{
+ const g=new StreetGame();g.startTraining('chen','punk',1);g.freezeEnemies=true;g.hero.x=143;g.hero.y=211;
+ g.enemies[0].x=170;g.enemies[0].y=211;g.requestAction('attack');assert.equal(g.carried,null);assert.equal(g.hero.pose,'punch');
+ advance(g,.6);g.enemies[0].x=400;g.held=true;g.requestAction('attack');assert.ok(g.carried);assert.equal(g.held,false);
+ advance(g,.5);assert.ok(g.carried,'the lift press must not also throw');assert.equal(g.shots.length,0);
+ g.requestAction('attack');assert.equal(g.carried,null);assert.equal(g.shots.length,1);
+});
+test('the running attack glides to a stop after its burst instead of halting',()=>{
+ const g=new StreetGame();g.startTraining('chen','punk',1);g.enemies[0].x=440;g.hero.x=60;g.mx=1;g.sprint=true;
+ g.requestAction('attack');const start=g.hero.x;g.mx=0;g.sprint=false;advance(g,.13);
+ const afterBurst=g.hero.x, burstSpeed=g.hero.vx;advance(g,.1);const mid=g.hero.vx;advance(g,.2);
+ assert.ok(burstSpeed>150,'momentum takes over when the burst ends');assert.ok(mid<burstSpeed&&mid>0,'and decays smoothly');
+ assert.ok(g.hero.x-afterBurst>20,'the glide adds real distance');assert.ok(g.hero.x-start>45);
 });

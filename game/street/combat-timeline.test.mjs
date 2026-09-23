@@ -15,6 +15,8 @@ const arena = (role = 'chen') => {
 };
 const swings = g => g.events.filter(event => event === 'swing').length;
 
+// Walk into the nearest grabbable enemy for one frame, then throw toward `dir` (0 = forward).
+const grabThrow = (g, dir = 0) => { const t = g.grabTarget; g.mx = Math.sign(t.x - g.hero.x); g.update(1 / 120); g.mx = dir; g.requestAction('attack'); };
 test('every role has complete attack phases, movement intervals and valid combo windows', () => {
   for (const role of Object.values(ATTACKS)) for (const a of Object.values(role)) {
     assert.ok(a.windup > 0 && a.active > 0 && a.recover > 0);
@@ -143,7 +145,7 @@ test('launched enemies finish flight, down and rise before reclaiming slots or t
 });
 
 test('throw shares physical flight and cannot regrab an airborne target', () => {
-  const g = arena(), e = g.enemies[0]; g.requestAction('throw'); assert.equal(e.pose, 'thrown');
+  const g = arena(), e = g.enemies[0]; grabThrow(g); assert.equal(e.pose, 'thrown');
   assert.equal(e.heightVelocity, AIR_PHYSICS.throwSpeed); g.hitstop = 0; advance(g, .4);
   assert.ok(e.height > 0); g.hero.x = e.x - 20; assert.equal(g.grabTarget, undefined);
   advance(g, .8); assert.equal(e.motion, 'grounded'); assert.equal(e.height, 0);
@@ -176,4 +178,27 @@ test('airborne characters do not collect ground supplies', () => {
   const g = arena(); g.hero.hp = 50; g.snacks = [{ x: g.hero.x, y: g.hero.y }]; g.requestAction('jump');
   advance(g, .5); assert.equal(g.snacks.length, 1); assert.equal(g.hero.hp, 50);
   advance(g, .3); assert.equal(g.snacks.length, 0); assert.equal(g.hero.hp, 80);
+});
+
+test('an airborne enemy can be juggled once by a jump kick, but not twice per launch',()=>{
+ const g = arena(), e = g.enemies[0];
+ g.hero.x = e.x - 24;
+ g.hit(e, 10, 200, { amount: 1200, launchSpeed: 260 }); g.hitstop = 0;
+ assert.equal(e.motion, 'launched');
+ const afterLaunch = e.hp;
+ g.requestAction('jump'); advance(g, .06); assert.equal(g.hero.motion, 'airborne');
+ g.hero.x = e.x - 24; g.requestAction('attack'); g.hitstop = 0; advance(g, .1);
+ assert.ok(e.hp < afterLaunch, 'the jump kick connects while the target is still in the air');
+ const afterJuggle = e.hp;
+ assert.equal(e.motion, 'launched', 'the juggle keeps it airborne');
+ g.hero.x = e.x - 24; g.requestAction('attack'); g.hitstop = 0; advance(g, .3);
+ assert.equal(e.hp, afterJuggle, 'one juggle per launch');
+});
+
+test('jumping out of a run slides instead, tripping whoever is standing there',()=>{
+ const g = arena(), e = g.enemies[0];
+ g.hero.x = e.x - 60; e.y = g.hero.y; g.mx = 1; g.sprint = true;
+ g.requestAction('jump'); assert.equal(g.hero.pose, 'slide'); assert.equal(g.hero.motion, 'grounded');
+ const start = g.hero.x; g.hitstop = 0; advance(g, .3);
+ assert.ok(g.hero.x - start > 45, 'the slide travels'); assert.equal(e.motion, 'launched');
 });

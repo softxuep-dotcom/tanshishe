@@ -18,6 +18,8 @@ const launch = (g, e = g.enemies[0], vx = 350, speed = 200, collateral = true) =
   g.hit(e, 1, vx, { amount: KNOCKBACK.threshold, launchSpeed: speed, collateral }); g.hitstop = 0;
 };
 
+// Walk into the nearest grabbable enemy for one frame, then throw toward `dir` (0 = forward).
+const grabThrow = (g, dir = 0) => { const t = g.grabTarget; g.mx = Math.sign(t.x - g.hero.x); g.update(1 / 120); g.mx = dir; g.requestAction('attack'); };
 test('light impact accumulates on each enemy and the threshold launches and clears the meter', () => {
   const g = arena(2), [a, b] = g.enemies;
   for (let i = 1; i < 10; i++) {
@@ -68,15 +70,15 @@ test('fresh dash launches both bosses immediately and shares delayed collateral 
 test('throw no longer deals instant row damage and can strike multiple targets on its actual path', () => {
   const g = arena(4), [a, b, c, d] = g.enemies;
   b.x = a.x + 65; c.x = a.x + 110; d.x = a.x + 230;
-  g.requestAction('throw'); assert.equal(a.pose, 'thrown'); assert.equal(a.hp, 971);
+  grabThrow(g); assert.equal(a.pose, 'thrown'); assert.equal(a.hp, 971);
   assert.deepEqual([b.hp, c.hp, d.hp], [1000, 1000, 1000]); advance(g, .7);
   assert.deepEqual([b.hp, c.hp, d.hp], [975, 975, 1000]);
 });
 
 test('leftward throws collide on the left, not with enemies behind the launch', () => {
   const g = arena(3), [a, b, c] = g.enemies;
-  g.hero.x = 260; a.x = 238; b.x = 160; c.x = 300; g.mx = -1;
-  g.requestAction('throw'); g.clearInput(); assert.ok(a.vx < 0); advance(g, .65);
+  g.hero.x = 260; a.x = 238; b.x = 160; c.x = 300;
+  grabThrow(g, -1); g.clearInput(); assert.ok(a.vx < 0); advance(g, .65);
   assert.equal(b.hp, 975); assert.equal(c.hp, 1000);
 });
 

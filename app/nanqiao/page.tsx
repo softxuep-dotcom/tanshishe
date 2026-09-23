@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { HEROES, StreetGame, isBoss, type Action, type Role, type EnemyKind } from '../../game/street/simulation';
+import { BADGES, HEROES, PLAYABLE, StreetGame, isBoss, type Action, type Role, type EnemyKind } from '../../game/street/simulation';
 import { CHAPTERS, bossDisplayName, type ChapterIndex } from '../../game/street/chapter-data';
 import { HERO_TOKEN, STORY, speaker } from '../../game/street/story-data';
 import './street.css';
@@ -66,11 +66,11 @@ export default function StreetPage() {
     const move = () => { sim.mx = Number(keys.has('d') || keys.has('arrowright')) - Number(keys.has('a') || keys.has('arrowleft')); sim.my = Number(keys.has('s') || keys.has('arrowdown')) - Number(keys.has('w') || keys.has('arrowup')); sim.sprint = keys.has('shift'); };
     const down = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName)) return;
-      const k = e.key.toLowerCase(); if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','j','k','l','i','u',' ','escape','shift'].includes(k)) return;
+      const k = e.key.toLowerCase(); if (!['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','j','k','i','u',' ','escape','shift'].includes(k)) return;
       if (sim.paused && k !== 'escape') return;
       if (sim.phase !== 'playing') return; e.preventDefault(); unlock(); keys.add(k); move();
       if (k === 'j') sim.held = true;
-      if (!e.repeat) { if (k === 'j') sim.requestAction('attack'); if (k === 'k' || k === ' ') sim.requestAction('jump'); if (k === 'l') sim.requestAction('throw'); if (k === 'i') sim.requestAction('special'); if (k === 'u') sim.requestAction('dodge'); if (k === 'escape') { sim.paused = !sim.paused; sim.clearInput(); keys.clear(); refresh(); } }
+      if (!e.repeat) { if (k === 'j') sim.requestAction('attack'); if (k === 'k' || k === ' ') sim.requestAction('jump'); if (k === 'i') sim.requestAction('special'); if (k === 'u') sim.requestAction('dodge'); if (k === 'escape') { sim.paused = !sim.paused; sim.clearInput(); keys.clear(); refresh(); } }
     };
     const up = (e: KeyboardEvent) => { keys.delete(e.key.toLowerCase()); move(); if (e.key.toLowerCase() === 'j') sim.held = false; };
     const blur = () => { keys.clear(); sim.clearInput(); stick.current = null; attackHold.current.reset(); setPad(''); if (sim.phase === 'playing') sim.paused = true; refresh(); };
@@ -100,7 +100,7 @@ export default function StreetPage() {
     };
     const recovering = action === 'dodge' && sim.dodgeCooldown > 0;
     const locked = action === 'special' && sim.rage < 50;
-    const ready = (action === 'special' && sim.rage >= 50) || (action === 'throw' && !!sim.grabTarget);
+    const ready = action === 'special' && sim.rage >= 50;
     const state = [action, ready ? 'available' : '', recovering ? 'recovering' : '', locked ? 'locked' : ''].filter(Boolean).join(' ');
     return <button className={`street-action ${state}`} aria-label={text} style={{ '--cooldown': action === 'dodge' ? Math.min(1, sim.dodgeCooldown / .55) : 0 } as CSSProperties} onPointerDown={e => {
       e.preventDefault();
@@ -150,7 +150,7 @@ export default function StreetPage() {
         <span className="street-kicker">训练模式</span>
         <h2>桥下练习场</h2><p className="street-note">切换陪练会清除当前敌人；重置会恢复双方状态。</p>
         <div className="training-rows">
-          <label><span>角色</span><select aria-label="角色" value={sim.role} onChange={e => { sim.role = e.target.value as Role; sim.resetTraining(); sim.paused = true; refresh(); }}>{(Object.keys(HEROES) as Role[]).map(id => <option key={id} value={id}>{HEROES[id].name}</option>)}</select></label>
+          {PLAYABLE.length > 1 && <label><span>角色</span><select aria-label="角色" value={sim.role} onChange={e => { sim.role = e.target.value as Role; sim.resetTraining(); sim.paused = true; refresh(); }}>{PLAYABLE.map(id => <option key={id} value={id}>{HEROES[id].name}</option>)}</select></label>}
           <label><span>陪练</span><select aria-label="陪练" value={sim.trainingEnemy} onChange={e => { sim.setTrainingOpponents(e.target.value as EnemyKind, sim.trainingCount); refresh(); }}><option value="punk">街头拳手</option><option value="runner">游斗快手</option><option value="tank">壮汉</option><option value="slinger">投掷手</option><option value="boss">铁头 Boss</option><option value="longleg">长腿 Boss</option><option value="luchuan">陆川 Boss</option><option value="hanxiao">韩骁 Boss</option></select></label>
           <label><span>数量</span><select aria-label="数量" value={sim.trainingCount} onChange={e => { sim.setTrainingOpponents(sim.trainingEnemy, Number(e.target.value)); refresh(); }}>{[1,2,3,4].map(n => <option key={n}>{n}</option>)}</select></label>
         </div>
@@ -188,8 +188,8 @@ export default function StreetPage() {
         <p className="street-kicker">原创街头动作 · 四章原型</p>
         <h1>南桥街<span>最后一场</span></h1>
         <p className="street-subtitle">今晚这顿饭，得打完再吃。</p>
-        <div className="street-roster">{(Object.keys(HEROES) as Role[]).map((id, i) => <button key={id} className={`roster-card ${role === id ? 'selected' : ''}`} aria-pressed={role === id} style={{ '--role': roleColor(id) } as CSSProperties} onClick={() => setRole(id)}>
-          <span className={`street-portrait portrait-${id}`}><i /><b>{['拳','摔','踢'][i]}</b></span>
+        <div className="street-roster">{PLAYABLE.map(id => <button key={id} className={`roster-card ${role === id ? 'selected' : ''}`} aria-pressed={role === id} style={{ '--role': roleColor(id) } as CSSProperties} onClick={() => setRole(id)}>
+          <span className={`street-portrait portrait-${id}`}><i /><b>{BADGES[id]}</b></span>
           <strong>{HEROES[id].name}</strong>
           <small className="roster-title">{HEROES[id].title}</small>
           <span className="roster-stats">
@@ -200,7 +200,7 @@ export default function StreetPage() {
         </button>)}</div>
         <div className="chapter-picker">{CHAPTERS.map((c, n) => <button key={c.code} aria-pressed={chapter===n} onClick={() => setChapter(n as ChapterIndex)}><b>{c.code}</b><span>{c.name}</span></button>)}</div>
         <button disabled={!ready || error} className="street-primary" onClick={() => { unlock(); sim.start(role, chapter); refresh(); }}>{error ? '加载失败，请刷新' : ready ? `选 ${HEROES[role].name} · 开打 →` : '正在准备夜市…'}</button>
-        <p className="street-help"><span>电脑</span> WASD 移动 · J 连打 · K 跳跃 · L 抓投 · I 绝招<br /><span>手机</span> 左摇杆 + 右侧五键，横屏更开阔</p>
+        <p className="street-help"><span>电脑</span> WASD 移动 · J 连打 · K 跳跃 · U 闪避 · I 绝招 · 走近敌人自动抓住<br /><span>手机</span> 左摇杆 + 右侧五键，横屏更开阔</p>
       </div>}
       {sim.phase === 'intro' && <div className="street-overlay street-story"><div className="street-plate">
         <span className="street-kicker">{script.intro.kicker}</span>
@@ -228,7 +228,7 @@ export default function StreetPage() {
         <div className="street-lines">
           {sim.phase==='won'
             ? script.won.lines.map((line, i) => <p key={i}><span>{heroName(line)}</span></p>)
-            : <><p><span>不要站在人堆里硬拼。跳跃躲投掷，抓投破围，绝招解围。</span></p><p><span>本场击倒 {sim.kills} 人。</span></p></>}
+            : <><p><span>不要站在人堆里硬拼。跳跃躲投掷，走进敌人抓住扔出破围，绝招解围。</span></p><p><span>本场击倒 {sim.kills} 人。</span></p></>}
         </div>
         {sim.phase==='won' && script.won.note && <div className="street-tutorial"><span className="street-tutorial-tag">待续</span>{script.won.note}</div>}
         <div className="street-actions-row">
@@ -240,8 +240,8 @@ export default function StreetPage() {
     </section>
     <div className={`street-controls ${play && !sim.paused ? '' : 'inactive'}`}>
       <div className={`street-stick street-dpad ${sim.running ? 'running' : ''}`} data-dir={pad} aria-label="方向键，同方向双击奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><i className="u" /><i className="d" /><i className="l" /><i className="r" /><b /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双击奔跑'}</small></div>
-      <div className="street-control-note"><b>WASD</b> 移动 · <b>Shift</b> 奔跑<br /><span>U 闪避 · 抓投破围 · 跳踢追击</span></div>
-      <div className="street-buttons">{actionButton('throw', sim.carried ? '放下' : '抓投', 'L', sim.carried ? '放下木箱' : '靠近使用')}{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.motion !== 'grounded' ? '落地可用' : '方向撤步')}{actionButton('special', '绝招', 'I', sim.rage >= 50 ? '可释放' : `${sim.rage}/50 怒气`)}{actionButton('jump', '跳跃', 'K', '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J 扔出' : 'J 按住', sim.carried ? '扔出' : '按住连打')}</div>
+      <div className="street-control-note"><b>WASD</b> 移动 · <b>Shift</b> 奔跑<br /><span>U 闪避 · 走近敌人自动抓住 · 跳踢追击</span></div>
+      <div className="street-buttons">{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.motion !== 'grounded' ? '落地可用' : '方向撤步')}{actionButton('special', '绝招', 'I', sim.rage >= 50 ? '可释放' : `${sim.rage}/50 怒气`)}{actionButton('jump', '跳跃', 'K', sim.running ? '滑铲' : '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J 扔出' : 'J 按住', sim.carried ? '扔出' : '按住连打')}</div>
     </div>
   </main>;
 }

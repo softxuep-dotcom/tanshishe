@@ -29,7 +29,7 @@
   /* 尺度 */
   --edge: 14px;
   --u: clamp(1px, .135vw, 1.25px);   /* 动作按钮排布单位 */
-  --stick: clamp(100px, 13vw, 124px);
+  --stick: clamp(122px, 17vw, 158px);
 }
 
 /* ---------- 外框 ---------- */
@@ -292,10 +292,10 @@
 .street-select h1 span { display: block; margin-top: 14px; font-size: clamp(11px, 1.4vw, 14px); letter-spacing: .6em; color: #cb907a; text-shadow: none; }
 .street-subtitle { margin: 13px 0 0; font-size: 13px; color: var(--text-2); }
 
-.street-roster { display: flex; gap: 12px; width: min(620px, 100%); margin: 16px 0 2px; }
+.street-roster { display: flex; justify-content: center; gap: 12px; width: min(620px, 100%); margin: 16px 0 2px; }
 .roster-card {
   position: relative;
-  flex: 1; min-width: 0;
+  flex: 1 1 0; min-width: 0; max-width: 264px;
   display: flex; flex-direction: column; align-items: center;
   gap: 2px;
   padding: 15px 8px 12px;
@@ -455,7 +455,7 @@
 .street-stick.running { border-color: var(--amber); box-shadow: 0 0 0 4px #f1bf7730; }
 .street-stick.running small { color: var(--amber-2); }
 /* TMNT 手机版式的数字方向键：固定位置、只认按在十字上的手指、按下的方向亮起 */
-.street-stick.street-dpad { background: none; border: 0; border-radius: 0; box-shadow: none; opacity: .9; }
+.street-stick.street-dpad { background: none; border: 0; border-radius: 0; box-shadow: none; opacity: .62; }
 .street-dpad::before { display: none; }
 .street-dpad i, .street-dpad b { position: absolute; width: 34%; height: 34%; border-radius: 0; pointer-events: none; }
 .street-dpad i {
@@ -519,7 +519,6 @@
 .street-action.recovering { opacity: .62; }
 .street-action.locked { opacity: .5; }
 
-.street-action.throw  { --face: #35463f; --rim: #86a596; left: calc(4 * var(--u));  top: 0; }
 .street-action.special { --face: #6d4550; --rim: #c07f7c; left: calc(70 * var(--u)); top: 0; }
 .street-action.dodge  { --face: #2c555e; --rim: #7fbcc0; left: 0; bottom: calc(10 * var(--u)); }
 .street-action.jump   { --face: #3a4a58; --rim: #8394a1; right: calc(80 * var(--u)); bottom: 0; width: calc(68 * var(--u)); height: calc(68 * var(--u)); }
@@ -530,7 +529,6 @@
 }
 .street-action.attack b { font-size: calc(20 * var(--u)); }
 .street-action.jump b { font-size: calc(16 * var(--u)); }
-.street-action.throw b { font-size: calc(14 * var(--u)); }
 .street-action.special.available { --face: #8a4f57; animation: ragePulse 1.2s ease-in-out infinite; }
 /* 手机只显示动作提示，电脑只显示键位 */
 .street-action .street-touch-hint { display: none; }
@@ -642,7 +640,7 @@
   .street-shell[data-playing='yes'] .training-entry { left: var(--edge); top: auto; bottom: var(--edge); }
 }
 @media (orientation: portrait) and (max-width: 400px) {
-  .street-shell { --u: .92px; --stick: 92px; }
+  .street-shell { --u: .92px; --stick: 112px; }
   .street-controls { gap: 8px; padding-inline: 10px; }
   .hud-rage-label em { display: block; margin: 2px 0 0; }
 }

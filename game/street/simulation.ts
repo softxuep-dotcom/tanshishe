@@ -4,13 +4,15 @@ import { CHAPTERS, CHAPTER_COUNT, waveBounds, type ChapterIndex } from './chapte
 export type { Role } from './combat-data.ts';
 export type { ChapterIndex } from './chapter-data.ts';
 export type Kind = Role | 'punk' | 'runner' | 'tank' | 'boss' | 'slinger' | 'longleg' | 'luchuan' | 'hanxiao';
-export type Action = 'attack' | 'jump' | 'throw' | 'special' | 'dodge';
+export type Action = 'attack' | 'jump' | 'special' | 'dodge';
 export type EnemyKind = Exclude<Kind, Role>;
 const BOSS_KINDS: readonly Kind[] = ['boss', 'longleg', 'luchuan', 'hanxiao'];
 export const isBoss = (kind: Kind) => BOSS_KINDS.includes(kind);
-const BOSS_HEALTH: Record<string, number> = { boss: 330, longleg: 330, luchuan: 360, hanxiao: 420 };
+// Mobs take roughly two full combos; bosses outlast a few punish windows.
+const BOSS_HEALTH: Record<string, number> = { boss: 320, longleg: 320, luchuan: 360, hanxiao: 420 };
+const MOB_HEALTH: Record<string, number> = { punk: 110, runner: 85, slinger: 70, tank: 180 };
 const BOSS_RECOVERY: Record<string, number> = { boss: BOSS_RULES.boss.recovery, longleg: BOSS_RULES.longleg.recovery, luchuan: BOSS_RULES.luchuan.recovery, hanxiao: BOSS_RULES.hanxiao.recovery };
-export const enemyHealth = (kind: Kind) => BOSS_HEALTH[kind] ?? (kind === 'tank' ? 86 : kind === 'runner' || kind === 'slinger' ? 42 : 52);
+export const enemyHealth = (kind: Kind) => BOSS_HEALTH[kind] ?? MOB_HEALTH[kind] ?? MOB_HEALTH.punk;
 export interface Crate { id: number; x: number; y: number; snack: boolean; }
 export interface Shot { x: number; y: number; vx: number; life: number; crate: boolean; snack: boolean; }
 export interface Snack { x: number; y: number; }
@@ -19,12 +21,17 @@ export const HEROES = {
   tuo: { name: '阿拓', title: '修车铺的大块头', detail: '重拳 · 远投 · 强壮', speed: 67, damage: 19, color: 0x65cbb1 },
   man: { name: '小满', title: '夜市快腿', detail: '快踢 · 飞踢 · 灵活', speed: 107, damage: 11, color: 0xdf7f9c },
 };
+// Only 陈野 is offered for now; 阿拓 and 小满 keep their stats and lines for when they are added back.
+export const PLAYABLE: readonly Role[] = ['chen'];
+export const BADGES: Record<Role, string> = { chen: '拳', tuo: '摔', man: '踢' };
 export type MotionState = 'grounded' | 'takeoff' | 'airborne' | 'landing' | 'launched' | 'downed' | 'rising';
 export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; height: number; heightVelocity: number; motion: MotionState; motionTime: number; vx: number; wind: number; charge: number; dead: number; knockbackAmount: number; knockbackRecovery: number; entryTime: number; vulnerable: number; bossAttack: number; guard: number; bossStep: number; bossMove: number; }
-interface Flight { hitIds: Set<number>; collateral: boolean; wallBounces: number; }
+interface Flight { hitIds: Set<number>; collateral: boolean; wallBounces: number; juggled: boolean; }
 export interface Spark { x: number; y: number; life: number; text: string; }
 export interface EnemySlot { id: number; x: number; y: number; attack: boolean; occupant: number | null; }
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+// How long a walked-into enemy stays held before struggling free.
+const GRAB_HOLD = 1.2;
 export class StreetGame {
   private spawnQueue: EnemyKind[] = [];
   private reinforcementTime = REINFORCEMENTS.delay;
@@ -177,7 +184,7 @@ export class StreetGame {
     if (!this.training) return;
     this.spawnQueue = []; this.reinforcementTime = REINFORCEMENTS.delay; this.enemyLimit = 0;
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
-    this.strike = null; this.chainTime = 0; this.nextAttackStep = 0; this.enemySlots = [];
+    this.strike = null; this.chainTime = 0; this.nextAttackStep = 0; this.enemySlots = []; this.grabbed = null; this.grabTime = 0;
     this.trainingEnemy = kind; this.trainingCount = Math.max(1, Math.min(4, Math.floor(count) || 1));
     this.enemies = Array.from({ length: this.trainingCount }, (_, i) => this.fighter(kind, 255 + i * 42, 177 + i % 3 * 24, enemyHealth(kind)));
     this.restockCrates();
@@ -210,11 +217,35 @@ export class StreetGame {
     return this.enemies.filter(e => e.hp > 0 && e.entryTime <= 0 && e.motion === 'grounded' && !isBoss(e.kind) && Math.abs(e.y - p.y) < 25 && Math.abs(e.x - p.x) < (this.role === 'tuo' ? 43 : 35))
       .sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0];
   }
+  grabbed: Fighter | null = null;
+  private grabTime = 0;
+  private releaseGrab() { if (this.grabbed) this.grabbed.stun = Math.min(this.grabbed.stun, .25); this.grabbed = null; this.grabTime = 0; }
+  private updateGrab(dt: number) {
+    const p = this.hero, e = this.grabbed;
+    if (e) {
+      this.grabTime -= dt;
+      if (this.grabTime <= 0 || e.hp <= 0 || e.motion !== 'grounded' || p.motion !== 'grounded') { this.releaseGrab(); return; }
+      e.x = p.x + p.face * 24; e.y = p.y; e.vx = 0; e.stun = Math.max(e.stun, .2); e.wind = 0; e.charge = 0;
+      e.pose = 'hurt'; e.poseTime = .1; p.pose = 'grab'; p.poseTime = .1;
+      return;
+    }
+    // Walking into an enemy without attacking grabs them, as in most brawlers; there is no grab button.
+    const target = this.grabTarget;
+    if (!target || this.held || this.strike || p.timer > 0 || p.stun > 0 || Math.abs(this.mx) <= .5 || Math.sign(this.mx) !== Math.sign(target.x - p.x)) return;
+    this.grabbed = target; this.grabTime = GRAB_HOLD + dt; p.face = Math.sign(target.x - p.x) || p.face;
+    this.releaseEnemySlot(target.id); this.events.push('swing');
+    this.updateGrab(dt);
+  }
+  get crateInReach() {
+    const p = this.hero;
+    if (this.carried || p.motion !== 'grounded') return undefined;
+    return this.crates.filter(c => Math.abs(c.x - p.x) < 35 && Math.abs(c.y - p.y) < 23).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x))[0];
+  }
   requestAction(action: Action) {
     if (this.phase !== 'playing' || this.paused) return;
     if (this.hero.timer > 0 || this.hero.stun > 0 || this.hitstop > 0 || this.motionLocked) {
       // Keep one deliberate action plus one attack; repeat attacks cannot erase a jump.
-      const priority = { dodge: 5, special: 4, jump: 3, throw: 2, attack: 1 };
+      const priority = { dodge: 5, special: 4, jump: 3, attack: 1 };
       this.buffered = this.buffered.filter(input => input.action !== action);
       const s = this.strike, window = s?.data.comboWindow;
       const comboRetention = action === 'attack' && s && window && s.elapsed >= window.open && s.elapsed < window.close ? window.close - s.elapsed + .04 : 0;
@@ -229,7 +260,7 @@ export class StreetGame {
   start(role: Role, chapter: ChapterIndex = 0) {
     this.spawnQueue = []; this.reinforcementTime = REINFORCEMENTS.delay; this.enemyLimit = 0;
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
-    this.enemySlots = []; this.nextAttackStep = 0;
+    this.enemySlots = []; this.nextAttackStep = 0; this.grabbed = null; this.grabTime = 0;
     this.dodgeMotion = null; this.dodgeCooldown = 0;
     this.strike = null; this.chainTime = 0;
     this.chapter = chapter; this.crates = []; this.carried = null; this.shots = []; this.snacks = [];
@@ -286,6 +317,18 @@ export class StreetGame {
     const p = this.hero;
     if (p.stun > 0 || p.timer > 0 || this.motionLocked) return;
     if (p.motion === 'airborne' && a !== 'attack') return;
+    if (this.grabbed) {
+      const e = this.grabbed;
+      if (a !== 'attack') this.releaseGrab();
+      else {
+        // Attack throws the held enemy toward the pushed direction, or forward when neutral.
+        this.grabbed = null; this.grabTime = 0;
+        p.face = Math.abs(this.mx) > .2 ? Math.sign(this.mx) : p.face;
+        p.timer = .36; p.inv = Math.max(p.inv, .22); p.pose = 'throw'; p.poseTime = .36;
+        this.hit(e, this.role === 'tuo' ? 42 : 29, p.face * 350, { amount: 1200, launchSpeed: AIR_PHYSICS.throwSpeed, pose: 'thrown' });
+        this.events.push('throw'); return;
+      }
+    }
     if (a === 'dodge') {
       if (this.carried || this.dodgeCooldown > 0) return;
       const length = Math.hypot(this.mx, this.my);
@@ -303,11 +346,12 @@ export class StreetGame {
         this.shots.push({ x: p.x + p.face * 20, y: p.y, vx: p.face * 250, life: 1.3, crate: true, snack: this.carried.snack });
         this.carried = null; p.timer = .45; p.pose = 'throw'; p.poseTime = .4; this.events.push('throw'); return;
       }
-      if (a === 'throw') { this.dropCrate(); p.timer = .25; return; }
       if (a === 'jump') return;
       if (a === 'special') this.dropCrate();
     }
     if (a === 'jump') {
+      // A jump out of a run turns into a sliding trip instead of leaving the ground.
+      if (this.running && !this.carried) { this.beginStrike(ATTACKS[this.role].slide, null); return; }
       this.chainTime = 0; this.nextAttackStep = 0;
       p.motion = 'takeoff'; p.motionTime = AIR_PHYSICS.takeoff; p.pose = 'takeoff'; p.poseTime = 0;
       this.events.push('jump'); return;
@@ -317,34 +361,32 @@ export class StreetGame {
     const nearby = this.enemies.filter(e => e.hp > 0 && e.entryTime <= 0 && e.motion === 'grounded' && Math.abs(e.y - p.y) < 25 && Math.abs(e.x - p.x) < 52).sort((a, b) => Math.abs(a.x - p.x) - Math.abs(b.x - p.x));
     // Aim assist helps standing attacks, but never overrides deliberate movement.
     if (!dash && Math.abs(this.mx) <= .2 && nearby[0]) p.face = nearby[0].x >= p.x ? 1 : -1;
+    // Crates share the attack button: a fresh press with nobody in reach lifts one instead of swinging.
+    const crate = a === 'attack' && fresh && !dash && !nearby.length ? this.crateInReach : undefined;
+    if (crate) {
+      this.carried = crate; this.crates = this.crates.filter(o => o !== crate); p.timer = .2;
+      // Lifting consumes the press, so a held attack cannot lift and immediately throw.
+      this.held = false; this.buffered = this.buffered.filter(input => input.action !== 'attack');
+      this.events.push('heal'); return;
+    }
     if (a === 'special') {
       if (this.rage < 50) { this.sparks.push({ x: p.x, y: p.y - 63, life: .6, text: '怒气不足' }); return; }
       this.rage -= 50; p.inv = .8; p.timer = .7; p.pose = 'special'; p.poseTime = .65;
       for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - p.x) < 108 && Math.abs(e.y - p.y) < 49) this.hit(e, 40, (e.x >= p.x ? 1 : -1) * 250, { amount: 600, launchSpeed: 170 });
       this.shake = .3; this.events.push('special'); return;
     }
-    if (a === 'throw') {
-      const e = this.grabTarget;
-      if (!e) {
-        const c = this.crates.filter(c => Math.abs(c.x - p.x) < 35 && Math.abs(c.y - p.y) < 23).sort((a,b) => Math.abs(a.x-p.x)-Math.abs(b.x-p.x))[0];
-        if (c) { this.carried = c; this.crates = this.crates.filter(o => o !== c); p.timer = .2; this.events.push('heal'); }
-        else this.sparks.push({ x: p.x, y: p.y - 65, life: .65, text: '靠近小兵或木箱' }); return;
-      }
-      p.face = Math.abs(this.mx) > .2 ? Math.sign(this.mx) : (e.x >= p.x ? 1 : -1);
-      p.timer = .36; p.inv = Math.max(p.inv, .22);
-      p.pose = 'throw'; p.poseTime = .36;
-      this.hit(e, this.role === 'tuo' ? 42 : 29, p.face * 350, { amount: 1200, launchSpeed: AIR_PHYSICS.throwSpeed, pose: 'thrown' });
-      this.events.push('throw'); return;
-    }
     const airborne = p.motion === 'airborne';
     this.attackStep = !dash && !airborne && this.chainTime > 0 ? this.nextAttackStep : 0;
     // Consume the previous confirmation. Only this punch actually landing earns the next step.
+    this.beginStrike(ATTACKS[this.role][dash ? 'dash' : airborne ? 'air' : GROUND_CHAIN[this.attackStep]],
+      !dash && !airborne ? this.attackStep : null);
+  }
+  private beginStrike(data: AttackDefinition, comboStep: number | null) {
+    const p = this.hero;
     this.chainTime = 0; this.nextAttackStep = 0;
-    const data = ATTACKS[this.role][dash ? 'dash' : airborne ? 'air' : GROUND_CHAIN[this.attackStep]];
-    p.pose = data.pose; p.timer = attackDuration(data);
-    p.poseTime = p.timer;
+    p.pose = data.pose; p.timer = attackDuration(data); p.poseTime = p.timer;
     this.strike = { data, elapsed: 0, face: p.face, damage: HEROES[this.role].damage * data.damageScale,
-      hitIds: new Set(), landed: false, comboStep: !dash && !airborne ? this.attackStep : null, comboChecked: false };
+      hitIds: new Set(), landed: false, comboStep, comboChecked: false };
     this.events.push('swing');
   }
   private updateStrike(dt: number) {
@@ -354,11 +396,13 @@ export class StreetGame {
     strike.elapsed += dt;
     const overlap = Math.max(0, Math.min(strike.elapsed, data.advance.end) - Math.max(before, data.advance.start));
     p.x += strike.face * data.advance.speed * overlap;
+    // Hand the burst over to sliding momentum; the shared ground friction brings it to a stop.
+    if (data.momentum && before < data.advance.end && strike.elapsed >= data.advance.end) p.vx = strike.face * data.momentum;
     if (strike.elapsed >= data.windup && before < data.windup + data.active) {
       for (const e of this.enemies) if (!strike.hitIds.has(e.id) && Math.abs(e.y - p.y) < data.lane &&
         (e.x - p.x) * strike.face > -9 && (e.x - p.x) * strike.face < data.reach &&
         p.height + data.height.high >= e.height && p.height + data.height.low <= e.height + 48) {
-        if (!this.hit(e, strike.damage, strike.face * data.knockback, { amount: data.impact, launchSpeed: data.launchSpeed })) continue;
+        if (!this.hit(e, strike.damage, strike.face * data.knockback, { amount: data.impact, launchSpeed: data.launchSpeed, juggle: data.juggle })) continue;
         strike.hitIds.add(e.id);
         if (!strike.landed) {
           if (strike.comboStep !== null) { this.nextAttackStep = (strike.comboStep + 1) % 3; this.chainTime = .65; }
@@ -378,7 +422,10 @@ export class StreetGame {
     if (strike.elapsed >= attackDuration(data)) this.strike = null;
   }
   hit(e: Fighter, damage: number, velocity: number, impact: HitImpact = { amount: KNOCKBACK.weak }) {
-    if (e.hp <= 0 || e.entryTime > 0 || e.motion === 'downed' || e.motion === 'rising' || e.motion === 'launched') return false;
+    if (e.hp <= 0 || e.entryTime > 0 || e.motion === 'downed' || e.motion === 'rising') return false;
+    const flight = this.flights.get(e.id);
+    const juggling = e.motion === 'launched';
+    if (juggling && !(impact.juggle && flight && !flight.juggled)) return false;
     const guarded = isBoss(e.kind) && !this.isBossVulnerable(e);
     if (guarded) damage *= BOSS_RULES.guardedDamageScale;
     this.releaseEnemySlot(e.id);
@@ -389,9 +436,11 @@ export class StreetGame {
     this.sparks.push({ x: e.x, y: e.y - e.height - 28, life: .33, text: `${guarded ? '减伤 ' : ''}${Math.round(damage)}` }); this.events.push('hit');
     if (!e.hp) { e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5); }
     e.knockbackAmount += Math.max(0, impact.amount); e.knockbackRecovery = KNOCKBACK.recoveryDelay;
-    if (e.knockbackAmount >= KNOCKBACK.threshold || (impact.launchSpeed ?? 0) > 0) {
+    if (e.knockbackAmount >= KNOCKBACK.threshold || (impact.launchSpeed ?? 0) > 0 || juggling) {
       e.vx = (Math.sign(velocity) || this.hero.face) * Math.max(Math.abs(velocity), KNOCKBACK.minimumSpeed);
-      this.launch(e, impact.launchSpeed || KNOCKBACK.lift, impact.pose, impact.collateral ?? true);
+      this.launch(e, juggling ? KNOCKBACK.juggleLift : impact.launchSpeed || KNOCKBACK.lift, impact.pose, impact.collateral ?? true);
+      // One juggle per launch: the fresh flight record inherits the spent hit.
+      if (juggling) { const next = this.flights.get(e.id); if (next) next.juggled = true; }
       if (Math.abs(velocity) <= 100) {
         this.hitstop = Math.max(this.hitstop, .075); this.shake = Math.max(this.shake, .16); this.events.push('heavy');
       }
@@ -402,7 +451,7 @@ export class StreetGame {
     const p = this.hero; if ((this.training && this.godMode) || p.inv > 0 || p.height > hitHeight || p.motion === 'downed' || p.motion === 'rising') return;
     this.dropCrate();
     this.dodgeMotion = null;
-    this.strike = null; this.buffered = []; this.chainTime = 0;
+    this.strike = null; this.buffered = []; this.chainTime = 0; this.releaseGrab();
     p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
     p.timer = 0;
     if (p.height > 0) { p.motion = 'launched'; p.heightVelocity = Math.min(0, p.heightVelocity); }
@@ -413,7 +462,7 @@ export class StreetGame {
     this.releaseEnemySlot(f.id); f.motion = 'launched'; f.motionTime = 0; f.heightVelocity = speed;
     f.pose = pose; f.poseTime = 0; f.wind = 0; f.charge = 0; f.guard = 0; f.bossStep = 0;
     f.knockbackAmount = 0; f.knockbackRecovery = 0;
-    this.flights.set(f.id, { hitIds: new Set([f.id]), collateral, wallBounces: 0 });
+    this.flights.set(f.id, { hitIds: new Set([f.id]), collateral, wallBounces: 0, juggled: false });
   }
   private sweepFlight(f: Fighter, flight: Flight, from: number, to: number, startTime: number, duration: number, velocity: number) {
     if (!flight.collateral || Math.abs(velocity) < KNOCKBACK.collisionMinSpeed || from === to) return;
@@ -529,7 +578,7 @@ export class StreetGame {
     this.updateStrike(dt);
     if (!p.stun) {
       const len = Math.max(1, Math.hypot(this.mx, this.my));
-      const movement = this.motionLocked || p.pose === 'dodge' ? 0 : p.motion === 'airborne' ? .8 : p.timer > 0 ? .25 : 1;
+      const movement = this.motionLocked || this.grabbed || p.pose === 'dodge' ? 0 : p.motion === 'airborne' ? .8 : p.timer > 0 ? .25 : 1;
       p.x += this.mx / len * HEROES[this.role].speed * dt * movement * (this.running ? 1.65 : 1) * (this.carried ? .75 : 1);
       p.y += this.my / len * 61 * dt * movement;
       if (this.mx && p.timer <= 0) p.face = this.mx > 0 ? 1 : -1;
@@ -538,6 +587,7 @@ export class StreetGame {
         while (this.buffered.length && p.timer <= 0 && !this.motionLocked) this.action(this.buffered.shift()!.action);
       } else if (this.held) this.action('attack', false);
     }
+    this.updateGrab(dt);
     const { left, right } = this.bounds;
     p.x = clamp(p.x, left + 22, right - 20); p.y = clamp(p.y, 157, 243);
     this.camera = clamp(p.x - 170, left, Math.max(left, right - 480 + 45));

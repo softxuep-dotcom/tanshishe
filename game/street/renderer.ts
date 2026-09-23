@@ -116,11 +116,11 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       for (let i = 0; i < 7; i++) { const x = i * 215 + 136 - camera; r(x, 142, 25, 14, 0x92704d); r(x + 2, 143, 21, 2, 0xc09c65); r(x + 11, 142, 2, 14, 0x5e4c40); }
       if (sim.food) { const x = 768 - camera; g.fillStyle(0xf8d394); g.fillEllipse(x, 204 + Math.sin(sim.time * 4) * 2, 15, 11); this.label(x - 18, 217, '+45 HP', 8, '#b9e7ad'); }
       const crate = (x:number,y:number,snack:boolean) => { r(x-12,y-23,24,23,0x493d35);r(x-10,y-21,20,19,0xbc915f);r(x-9,y-19,18,3,0xe2bb7e);r(x-9,y-8,18,3,0x75543c);r(x-3,y-20,5,19,0x79583f);if(snack)r(x-3,y-16,6,6,0xa8cc97); };
-      for(const c of sim.crates) { const x=c.x-camera;g.fillStyle(0x101b24,.5);g.fillEllipse(x,c.y+2,31,9);crate(x,c.y,c.snack); if(Math.abs(c.x-sim.hero.x)<35 && Math.abs(c.y-sim.hero.y)<23 && !sim.carried) this.label(x-17,c.y-38,'抓投举起',8,'#ffe0a0'); }
+      for(const c of sim.crates) { const x=c.x-camera;g.fillStyle(0x101b24,.5);g.fillEllipse(x,c.y+2,31,9);crate(x,c.y,c.snack); if(Math.abs(c.x-sim.hero.x)<35 && Math.abs(c.y-sim.hero.y)<23 && !sim.carried) this.label(x-17,c.y-38,'攻击举起',8,'#ffe0a0'); }
       for(const s of sim.snacks) { const x=s.x-camera;r(x-7,s.y-9,14,9,0xe0b477);r(x-3,s.y-11,6,3,0xf6e4b2);this.label(x-12,s.y+4,'+30',8,'#bce6b0'); }
       const people = sim.phase === 'select' ? [sim.hero] : [...sim.enemies, sim.hero];
       people.filter(f => f.hp > 0 || f.dead > 0).sort((a, b) => a.y - b.y).forEach(f => this.person(f, f.x - camera + offset, f.y));
-      if(sim.carried) { crate(sim.hero.x-camera+offset,sim.hero.y-61,sim.carried.snack);this.label(sim.hero.x-camera-30,sim.hero.y-96,'攻击扔出 / 抓投放下',8,'#ffe0a0'); }
+      if(sim.carried) { crate(sim.hero.x-camera+offset,sim.hero.y-61,sim.carried.snack);this.label(sim.hero.x-camera-30,sim.hero.y-96,'攻击扔出',8,'#ffe0a0'); }
       for(const s of sim.shots) { const x=s.x-camera; if(s.crate)crate(x,s.y-19,s.snack);else{r(x-4,s.y-30,8,10,0xf29c61);r(x-4,s.y-31,8,2,0xffe8ba);g.lineStyle(1,0xffd39e,.7);g.lineBetween(x-Math.sign(s.vx)*18,s.y-24,x,s.y-24);} }
       for (const s of sim.sparks) {
         const x = s.x - camera, y = s.y - (1 - s.life) * 13; this.label(x - 6, y, s.text, 12, '#ffedb1');
@@ -159,7 +159,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       const ENEMY_SHIRTS: Record<string, number> = { longleg: 0x6ec9bd, slinger: 0x7797af, boss: 0xb54f48, runner: 0x9981b0, tank: 0x6f8a73, luchuan: 0xd4785f, hanxiao: 0x4a5a86 };
       let shirt = isHero ? HEROES[sim.role].color : ENEMY_SHIRTS[f.kind] ?? 0x74849b;
       if (f.pose === 'hurt' && f.poseTime > .15) shirt = 0xffe9c6;
-      if (isHero && (sim.running || f.pose === 'dash')) {
+      if (isHero && (sim.running || f.pose === 'dash' || f.pose === 'slide')) {
         g.lineStyle(2, 0xe9c282, .45);
         g.lineBetween(x - face * 15, ground - 22, x - face * 35, ground - 22);
         g.lineBetween(x - face * 18, ground - 12, x - face * 43, ground - 12);
@@ -181,6 +181,20 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         r(2, -36, 9, 11, shirt); r(6, -45, 8, 9, 0xe0ab80);
         r(-9, -14, 8, 14, 0x263749); r(3, -14, 8, 14, 0x344b5b);
         r(-11, -3, 11, 4, 0x171f2a); r(3, -3, 12, 4, 0x171f2a);
+        return;
+      }
+      if (f.pose === 'slide') {
+        // Low horizontal silhouette: lead leg out front, dust kicked up behind the hip.
+        g.fillStyle(0xd8c7a4, .3); g.fillEllipse(x - face * 14, ground + 2, 46, 8);
+        r(-17, -21, 25, 18, 0x172332);
+        r(-16, -20, 23, 16, shirt);
+        r(2, -15, 26, 8, 0x263749); r(26, -17, 9, 10, 0xe4c58e);
+        r(-2, -24, 18, 7, 0x344b5b);
+        r(-24, -15, 11, 7, shirt); r(-31, -14, 8, 6, 0xe0ab80);
+        r(-23, -32, 16, 15, 0xe0ab80); r(-24, -33, 17, 5, 0x282832); r(-12, -27, 3, 3, 0x252434);
+        g.lineStyle(2, 0xe9c282, .5);
+        g.lineBetween(x - face * 22, ground - 6, x - face * 46, ground - 6);
+        g.lineBetween(x - face * 26, ground - 16, x - face * 44, ground - 16);
         return;
       }
       if (f.pose === 'dodge' || ['takeoff', 'landing', 'rising'].includes(f.motion)) {
@@ -229,6 +243,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         else { r(8, -33, 21, 7, shirt); r(27, -35, 9, 10, 0xe0ab80); }
         g.lineStyle(2, 0xfbe6b1, .6); g.lineBetween(x + face * 20, y - 23, x + face * 39, y - 27);
       } else { r(w / 2 - 2, -32, 7, 13, shirt); r(w / 2, -22, 7, 7, 0xe0ab80); }
+      if (isHero && f.pose === 'grab') { r(6,-35,18,7,shirt); r(22,-36,8,8,0xe0ab80); r(6,-26,18,7,shirt); r(22,-27,8,8,0xe0ab80); }
       if(isHero && sim.carried){r(-15,-58,6,30,shirt);r(10,-58,6,30,shirt);r(-15,-64,6,7,0xe0ab80);r(10,-64,6,7,0xe0ab80);}
       if (!isHero && f.hp < f.max) { g.fillStyle(0x172331); g.fillRect(x - 13, y - 62, 26, 3); g.fillStyle(0xe89d77); g.fillRect(x - 13, y - 62, 26 * f.hp / f.max, 3); }
       if (isHero) { g.fillStyle(HEROES[sim.role].color); g.fillTriangle(x - 4, y - 67, x + 4, y - 67, x, y - 63); }

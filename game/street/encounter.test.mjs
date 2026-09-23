@@ -183,11 +183,11 @@ test('pause and hitstop freeze vulnerability, and training reset clears every bo
 test('both bosses can be defeated entirely by punishing successive natural windows', () => {
   for (const kind of ['boss', 'longleg']) {
     const g = bossArena(kind), e = g.enemies[0]; let windows = 0;
-    while (e.hp > 0 && windows < 5) {
+    while (e.hp > 0 && windows < 20) {
       g.hero.x = e.x - 70; g.hero.y = e.y; e.timer = 0;
       expose(g); g.hit(e, 100, 0, { amount: 0 }); windows++;
       g.hero.y = 240; advance(g, 1.4);
     }
-    assert.equal(e.hp, 0); assert.equal(g.kills, 1); assert.equal(windows, 4);
+    assert.equal(e.hp, 0); assert.equal(g.kills, 1); assert.equal(windows, Math.ceil(e.max / 100));
   }
 });

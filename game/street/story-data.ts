@@ -18,7 +18,7 @@ const shared = (base: Omit<Scene, 'lines'>, lines: readonly Line[]) => perRole(b
 
 export const STORY: readonly ChapterScript[] = [
   {
-    tip: '连打清兵 · 靠近抓投 · 跳跃躲攻击',
+    tip: '连打清兵 · 走进敌人自动抓住 · 跳跃躲攻击',
     intro: {
       kicker: '第一关 / 饭还没吃完', title: '一副旧拳套，砸进了菜盘。',
       lines: [
@@ -26,7 +26,7 @@ export const STORY: readonly ChapterScript[] = [
         { who: '陈野', text: '「他人呢？」' },
         { who: '小满', text: '「先把拳套拿出来。桌子打坏了要赔。」' },
       ],
-      tutorial: ['按住攻击连打 · 靠近抓投 · 跳跃接飞踢', '50 怒气释放绝招'],
+      tutorial: ['按住攻击连打 · 走进敌人自动抓住，按攻击扔出 · 跳跃接飞踢', '50 怒气释放绝招'],
       button: '推开椅子，出去打 →',
     },
     boss: shared({
@@ -44,7 +44,7 @@ export const STORY: readonly ChapterScript[] = [
     },
   },
   {
-    tip: '靠近木箱按抓投举起 · 攻击扔出 · 绿标箱内有补给',
+    tip: '靠近木箱按攻击举起 · 再按攻击扔出 · 绿标箱内有补给',
     intro: {
       kicker: '第二关 / 他欠的是什么', title: '河风吹过上锁的货场。',
       lines: [
@@ -52,7 +52,7 @@ export const STORY: readonly ChapterScript[] = [
         { who: '阿拓', text: '「怕人进来。」' },
         { who: '陈野', text: '「也可能怕人出去。」' },
       ],
-      tutorial: ['靠近木箱按抓投举起，按攻击扔出；再次抓投放下。', '绿标箱破碎掉补给，地面木箱能挡罐子。'],
+      tutorial: ['身边没有敌人时靠近木箱按攻击举起，再按攻击扔出。', '绿标箱破碎掉补给，地面木箱能挡罐子。'],
       button: '走，去货场 →',
     },
     boss: perRole({
