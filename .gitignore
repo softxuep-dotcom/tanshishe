@@ -35,5 +35,8 @@ next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/
+# art source videos, frame dumps and previews (hundreds of MB)
+/output/
+__pycache__/
 /work/
 *.tsbuildinfo

@@ -280,6 +280,8 @@ export class StreetGame {
   private strike: { data: AttackDefinition; elapsed: number; face: number; damage: number; hitIds: Set<number>; landed: boolean; comboStep: number | null; comboChecked: boolean } | null = null;
   private chainTime = 0;
   get currentAttack() { return this.strike?.data ?? null; }
+  /** Seconds since the current strike began; the renderer picks sprite frames from it. */
+  get attackElapsed() { return this.strike?.elapsed ?? 0; }
   get attackPhase() { const s = this.strike; return !s ? null : s.elapsed < s.data.windup ? 'windup' : s.elapsed < s.data.windup + s.data.active ? 'active' : 'recover'; }
   get windingUp() { return this.attackPhase === 'windup'; }
   private get motionLocked() { return this.hero.motion !== 'grounded' && this.hero.motion !== 'airborne'; }

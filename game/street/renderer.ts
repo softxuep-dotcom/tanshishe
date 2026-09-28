@@ -1,17 +1,30 @@
 /// <reference types="vite/client" />
 import * as Phaser from 'phaser';
 import { HEROES, StreetGame, type Fighter } from './simulation';
-import { KNOCKBACK, TORNADO } from './combat-data';
+import { ATTACKS, KNOCKBACK, TORNADO } from './combat-data';
 import { BOSS_RULES, CHARGES } from './encounter-data';
+import { CHEN_SHEET, chenAnimFor, chenFrame } from './chen-sprites';
+// ?url keeps a plain URL string under both Vite (Pages) and vinext, which turns bare image imports into objects.
+import chenSheetUrl from './sprites/chen.png?url';
 
 export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: () => void, sound: (name: string) => void) {
   class StreetScene extends Phaser.Scene {
+    // Drawing order: ink (scenery and fighters behind the hero) → chen sprite → fore (fighters in front, effects).
     ink!: Phaser.GameObjects.Graphics;
+    fore!: Phaser.GameObjects.Graphics;
+    pen!: Phaser.GameObjects.Graphics;
+    chen?: Phaser.GameObjects.Sprite;
     labels: Phaser.GameObjects.Text[] = [];
     lastPublish = 0;
     constructor() { super('south-bridge'); }
+    preload() {
+      this.load.spritesheet('chen', chenSheetUrl, { frameWidth: CHEN_SHEET.frameWidth, frameHeight: CHEN_SHEET.frameHeight });
+    }
     create() {
       this.ink = this.add.graphics(); this.game.canvas.setAttribute('aria-label', '南桥街横版格斗场地');
+      // Without the sheet (failed load) 陈野 keeps the programmatic figure.
+      if (this.textures.exists('chen')) this.chen = this.add.sprite(0, 0, 'chen', 0).setOrigin(CHEN_SHEET.anchorX / CHEN_SHEET.frameWidth, CHEN_SHEET.anchorY / CHEN_SHEET.frameHeight).setVisible(false);
+      this.fore = this.add.graphics(); this.pen = this.ink;
       if (import.meta.env.DEV) {
         const debug = window as unknown as { __STREET_READ__?: () => unknown };
         debug.__STREET_READ__ = () => ({ phase:sim.phase, chapter:sim.chapter, wave:sim.wave, training:sim.training, paused:sim.paused, hero:{...sim.hero}, enemies:sim.enemies.map(e=>({...e})), crates:sim.crates.map(c=>({...c})), carried:sim.carried?{...sim.carried}:null, shots:sim.shots.map(s=>({...s})), tornadoes:sim.tornadoes.map(t=>({...t,hitIds:[...t.hitIds]})), kills:sim.kills, rage:sim.rage });
@@ -26,7 +39,8 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       const text = this.add.text(Math.round(x), Math.round(y), value, { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: `${size}px`, color, fontStyle: 'bold', stroke: '#172030', strokeThickness: 2 }); this.labels.push(text); return text;
     }
     draw() {
-      this.labels.forEach(t => t.destroy()); this.labels = []; const g = this.ink; g.clear();
+      this.labels.forEach(t => t.destroy()); this.labels = []; let g = this.ink; g.clear();
+      this.fore.clear(); this.pen = this.ink; this.chen?.setVisible(false);
       const r = (x: number, y: number, w: number, h: number, c: number, a = 1) => { g.fillStyle(c, a); g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
       const offset = sim.shake > 0 ? Math.sin(sim.time * 137) * sim.shake * 11 : 0;
       const width = this.scale.gameSize.width;
@@ -119,7 +133,11 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       for(const c of sim.crates) { const x=c.x-camera;g.fillStyle(0x101b24,.5);g.fillEllipse(x,c.y+2,31,9);crate(x,c.y,c.snack); if(Math.abs(c.x-sim.hero.x)<35 && Math.abs(c.y-sim.hero.y)<23 && !sim.carried) this.label(x-17,c.y-38,'攻击举起',8,'#ffe0a0'); }
       for(const s of sim.snacks) { const x=s.x-camera;r(x-7,s.y-9,14,9,0xe0b477);r(x-3,s.y-11,6,3,0xf6e4b2);this.label(x-12,s.y+4,'+30',8,'#bce6b0'); }
       const people = sim.phase === 'select' ? [sim.hero] : [...sim.enemies, sim.hero];
-      people.filter(f => f.hp > 0 || f.dead > 0).sort((a, b) => a.y - b.y).forEach(f => this.person(f, f.x - camera + offset, f.y));
+      people.filter(f => f.hp > 0 || f.dead > 0).sort((a, b) => a.y - b.y).forEach(f => {
+        this.person(f, f.x - camera + offset, f.y);
+        // Everyone after the hero, and every effect, is drawn above the hero sprite.
+        if (f === sim.hero) { g = this.fore; this.pen = this.fore; }
+      });
       if(sim.carried) { crate(sim.hero.x-camera+offset,sim.hero.y-61,sim.carried.snack);this.label(sim.hero.x-camera-30,sim.hero.y-96,'攻击扔出',8,'#ffe0a0'); }
       for(const s of sim.shots) { const x=s.x-camera; if(s.crate)crate(x,s.y-19,s.snack);else{r(x-4,s.y-30,8,10,0xf29c61);r(x-4,s.y-31,8,2,0xffe8ba);g.lineStyle(1,0xffd39e,.7);g.lineBetween(x-Math.sign(s.vx)*18,s.y-24,x,s.y-24);} }
       for (const t of sim.tornadoes) {
@@ -171,7 +189,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       // 开场提示和 Boss 血条由 DOM HUD 负责，画布只留战场内的信息。
     }
     person(f: Fighter, x: number, ground: number) {
-      const g = this.ink; const isHero = f === sim.hero; const big = f.kind === 'boss' || f.kind === 'tank' || f.kind === 'tuo';
+      const g = this.pen; const isHero = f === sim.hero; const big = f.kind === 'boss' || f.kind === 'tank' || f.kind === 'tuo';
       const moving = isHero ? Math.hypot(sim.mx, sim.my) > .1 : f.timer < .9 && f.stun <= 0;
       const stride = moving && f.pose === 'idle' ? Math.sin(sim.time * (isHero && sim.running ? 21 : 13) + f.id) * (isHero && sim.running ? 7 : 5) : 0;
       const y = ground - f.height - (f.kind==='longleg'?5:0); const w = big ? 24 : 17; const face = f.face;
@@ -191,6 +209,18 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       // Two-frame white flash on a fresh hit.
       const white = !isHero && f.pose === 'hurt' && f.poseTime > .16;
       const r = (a: number, b: number, c: number, d: number, color: number) => { g.fillStyle(white ? 0xffffff : color, alpha); g.fillRect(Math.round(x + (face === 1 ? a : -a - c)), Math.round(y + b), c, d); };
+      if (isHero && this.chen) {
+        const strike = sim.currentAttack, moves = ATTACKS[sim.role];
+        const attack = strike ? (Object.keys(moves) as (keyof typeof moves)[]).find(id => moves[id] === strike) ?? 'other' : null;
+        const anim = chenAnimFor({ role: sim.role, hp: f.hp, pose: f.pose, motion: f.motion, height: f.height, carrying: !!sim.carried, attack, moving, running: sim.running });
+        if (anim) {
+          const frame = chenFrame(anim, sim.time, strike && { elapsed: sim.attackElapsed, windup: strike.windup, active: strike.active, recover: strike.recover });
+          // Negative x scale mirrors around the foot anchor; flipX would mirror around the frame centre.
+          this.chen.setFrame(frame).setPosition(Math.round(x), Math.round(ground)).setScale(face, 1).setAlpha(alpha).setVisible(true);
+          g.fillStyle(HEROES[sim.role].color); g.fillTriangle(x - 4, ground - 76, x + 4, ground - 76, x, ground - 72);
+          return;
+        }
+      }
       if (f.hp <= 0 || f.motion === 'launched' || f.motion === 'downed') { r(-20, -12, 32, 12, shirt); r(12, -13, 11, 12, 0xdfa77d); r(-27, -10, 9, 8, 0x1b2635); return; }
       if (f.guard > 0) {
         // Sidestep stance: readable as "about to answer", not as an idle pause.
