@@ -110,3 +110,10 @@ export const GRABBER = {
   squeeze: 5, squeezeEvery: .4, slam: 16,
   whiffStun: .6, escapeStun: .7,
 };
+
+// Close-range basic attack for the signature-move bosses. Standing in their face earns quick jabs;
+// backing off to mid range is what baits the big move and its punish window.
+export const BOSS_JAB: Record<string, { range: number; wind: number; reach: number; lane: number; damage: number; cooldown: number }> = {
+  boss: { range: 46, wind: .3, reach: 46, lane: 20, damage: 12, cooldown: .9 },
+  longleg: { range: 50, wind: .26, reach: 50, lane: 20, damage: 10, cooldown: .8 },
+};

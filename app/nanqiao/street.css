@@ -530,6 +530,8 @@
 .street-action.attack b { font-size: calc(20 * var(--u)); }
 .street-action.jump b { font-size: calc(16 * var(--u)); }
 .street-action.special.available { --face: #8a4f57; animation: ragePulse 1.2s ease-in-out infinite; }
+/* 满怒：金色必杀 */
+.street-action.special.super { --face: #b8862f; --rim: #ffd66b; --label: #2b2a2f; animation: ragePulse .7s ease-in-out infinite; }
 /* 手机只显示动作提示，电脑只显示键位 */
 .street-action .street-touch-hint { display: none; }
 @media (pointer: coarse) {
@@ -541,6 +543,7 @@
 
 /* ---------- 自适应 ---------- */
 @media (orientation: landscape) {
+  .street-shell { --stick: clamp(138px, 20vw, 180px); }
   .street-stage { max-width: none; }
   .street-controls {
     position: absolute; z-index: 3;
@@ -552,7 +555,8 @@
     border: 0;
     pointer-events: none;
   }
-  .street-stick { margin: 0 0 18px 6px; pointer-events: auto; background: #22303cbb; }
+  /* 左拇指落点上移，十字触区同步放大；控件仍留在画面两侧。 */
+  .street-stick { margin: 0 0 clamp(30px, 8dvh, 40px) 6px; pointer-events: auto; background: #22303cbb; }
   .street-buttons { opacity: .94; }
   .street-control-note { display: none; }
 }
@@ -636,15 +640,38 @@
   .street-tip { max-width: 78vw; font-size: 11px; }
 }
 @media (orientation: portrait) {
+  .street-shell { --stick: clamp(128px, 34vw, 148px); }
+  /* 工具与目标上下排列，给窄屏目标文字完整行宽，避免逐字换行。 */
+  .hud-right { min-width: 0; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .hud-tools { order: -1; }
+  /* 保留底部独立操作区，抬高方向键时不侵入战斗舞台。 */
+  .street-controls { min-height: max(calc(154 * var(--u) + 26px), calc(var(--stick) + 36px)); }
+  .street-stick { transform: translateY(-14px); }
   /* 竖屏舞台下方是空的，练习场入口放这里不挡 HUD */
   .street-shell[data-playing='yes'] .training-entry { left: var(--edge); top: auto; bottom: var(--edge); }
+  .street-shell[data-playing='yes'] .training-entry ~ .street-tip {
+    left: calc(var(--edge) + 102px); right: var(--edge); bottom: var(--edge);
+    max-width: none; transform: none;
+  }
 }
 @media (orientation: portrait) and (max-width: 400px) {
-  .street-shell { --u: .92px; --stick: 112px; }
+  .street-shell { --u: .92px; }
   .street-controls { gap: 8px; padding-inline: 10px; }
+  .street-buttons { width: calc(208 * var(--u)); }
   .hud-rage-label em { display: block; margin: 2px 0 0; }
 }
+@media (orientation: portrait) and (max-width: 359px) {
+  .street-shell { --u: .82px; --stick: 122px; }
+  .street-controls { gap: 6px; padding-inline: 8px; }
+}
+@media (orientation: landscape) and (max-height: 360px) {
+  /* 小横屏留出上方血条与陪练入口，不让放大的方向键顶到 HUD。 */
+  .street-shell { --stick: clamp(132px, 24vw, 148px); }
+}
+@media (orientation: landscape) and (max-height: 340px) {
+  .street-stick { margin-bottom: 20px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .street-combo, .street-action.special.available, .hud-bar.rage[data-ready='yes'] i { animation: none; }
+  .street-combo, .street-action.special.available, .street-action.special.super, .hud-bar.rage[data-ready='yes'] i { animation: none; }
   .hud-bar i, .hud-bar u, .roster-card { transition: none; }
 }

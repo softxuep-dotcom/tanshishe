@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#151c20">
+  <title>南桥街 · 火柴人动作样片</title>
+  <link rel="stylesheet" href="./lab.css">
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">南桥街 / 动作试演 01</p><h1>火柴人，也要拳拳到肉。</h1></div><a href="../">返回游戏 ↗</a></header>
+    <section class="stage" aria-label="火柴人动画预览">
+      <div class="stage-top"><span class="live"><i></i>关键帧动作样片</span><span id="phase">准备</span></div>
+      <canvas id="stage" aria-label="两名火柴人演示格斗动作"></canvas>
+      <div class="stage-bottom"><div><strong id="clip-name">三连击</strong><p id="description">刺拳、直拳、上勾拳，逐段击中。</p></div><span id="hit-label"></span></div>
+    </section>
+    <section class="workbench" aria-label="动作控制">
+      <nav id="clips" aria-label="选择动作"></nav>
+      <div class="transport">
+        <button id="play" class="play">暂停</button><button id="step" title="暂停并前进1/60秒">逐帧 →</button>
+        <label class="speed">速度<select id="speed" aria-label="播放速度"><option value="1">1× 正常</option><option value="0.5">0.5× 慢放</option><option value="0.25">0.25× 慢放</option></select></label>
+        <div class="toggles"><button id="mirror" aria-pressed="false">左右翻转</button><button id="bones" aria-pressed="false">看骨架</button></div>
+      </div>
+      <div class="scrubber"><span id="clock">0.00s</span><input id="timeline" type="range" min="0" max="2000" value="0" step="1" aria-label="动画时间"><span id="end">2.00s</span></div>
+      <div class="keyposes"><span>关键姿势</span><div id="pose-strip" aria-label="点击关键姿势定位动画"></div></div>
+    </section>
+    <footer><span><i class="swatch"></i>陈野的动作试演</span><p>目前先看动作节奏与轮廓。角色外观可再加发型、衣服、护手。</p></footer>
+    <p id="error" role="alert" hidden>动作样片未能加载，请刷新重试。</p>
+  </main>
+  <script type="module" src="./lab.js"></script>
+</body>
+</html>

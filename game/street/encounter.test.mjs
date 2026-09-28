@@ -22,6 +22,8 @@ const bossArena = kind => {
 const expose = (g, step = 1 / 120) => {
   const e = g.enemies[0];
   for (let t = 0; t < 3 && !g.isBossVulnerable(e); t += step) {
+    // Bosses jab anyone standing in their face; hold mid range to bait the signature move, then sidestep it.
+    if (e.wind <= 0 && e.charge <= 0 && e.bossAttack <= 0) { g.hero.x = e.x - 70 >= 40 ? e.x - 70 : e.x + 70; g.hero.y = e.y; }
     g.update(step); if (e.wind > 0) g.hero.y = 240;
   }
   assert.equal(g.isBossVulnerable(e), true); return e;

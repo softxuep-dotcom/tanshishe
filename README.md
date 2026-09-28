@@ -36,6 +36,8 @@ WASD / 方向键移动，J 连打，K / 空格跳跃，U 闪避，I 消耗 50 �
 
 小兵 AI 参考 OpenBOR、Downtown Beatdown、punchy、Fists of Fury 重做，参数都在 `encounter-data.ts` 的 `MOB_AI`：每次出手、挨打或计划到期后按权重重抽"压上 / 喘口气 / 绕背"，绕背偏好玩家身后的攻击位；压上 3–4.5 秒还没出手就放弃改喘口气；冷却在区间内随机，一屏小兵不再同步出拳；倒地起身时玩家还站在旁边，会用很短前摇起身反击；壮汉先横向对齐再管纵深；等待位按敌人固定抖动。投掷手按玩家纵向速度算提前量瞄准将要走到的那条线，并退到自己一侧远处。随机数带种子，每局开局重置，测试和回放可复现。
 
+Boss 近身普攻：铁头、长腿贴脸时会打 0.26–0.3 秒前摇的快拳（不开破绽），拉到中距离才会出招牌技，参数在 `BOSS_JAB`。满怒必杀：怒气 100 时绝招键变金色“必杀”，先定格再对当前街区所有敌人打三段加一记收尾击飞，Boss 被打破霸体直接进破绽；50–99 仍是原绝招，参数在 `combat-data.ts` 的 `SUPER`。手感：受击敌人闪白、击飞闪屏、击倒 Boss 或清场的最后一击慢动作 0.45 秒（`FINISHER`），剧情模式用命中爆点代替伤害数字，练习场开判定范围时仍显示数字。
+
 两种新小兵：**格挡兵**（第三关起）正面举臂格挡，普通拳打上去被弹开、连段断掉，并会很快盾击反击；抓他、绕到背后（它转身有 0.35 秒延迟）、滑铲或奔跑重击都能破。**扑抓兵**（第四关起）保持距离、蹲下蓄力 0.55 秒后前扑，扑中就抓住你每 0.4 秒掐 5 点血，1.4 秒后摔出；连按任意键挣脱，挣脱后它会愣 0.7 秒；闪避或跳跃能让它扑空，扑空也会愣住。练习场可选这两种。
 
 出兵配置集中在 `game/street/encounter-data.ts`。四章分别为10／11／12／13个小兵，每章三波同时存活上限为2／3／3、2／3／3、3／3／3、3／4／4；首次填到上限，有空位后等待600ms逐个补人。活着的击飞／倒地敌人和入场敌人仍占上限，死亡身体不占。增援在距玩家至少90逻辑单位的战区边缘选择较空位置，450ms入场提示期间不能攻击、受击、被抓或预约围攻位。队列空、活人全灭且死亡表现结束后才能前进，HUD剩余数包含待援；练习场维持手动数量，不自动补兵。
@@ -84,10 +86,14 @@ WASD / 方向键移动，J 连打，K / 空格跳跃，U 闪避，I 消耗 50 �
 ## 验证与构建
 
 ```sh
-node --experimental-strip-types --test game/street/simulation.test.mjs game/street/mobile-combat.test.mjs game/street/combat-timeline.test.mjs game/street/knockback.test.mjs game/street/encounter.test.mjs game/street/chapter.test.mjs game/street/enemy-ai.test.mjs
+node --experimental-strip-types --test game/street/*.test.mjs
 npx tsc --noEmit
 npm run build:pages
 ```
 
 Pages静态产物位于 `dist/pages`。发布目标已切换到 GitHub Pages，推送 main 自动部署，具体方式见发布说明。
 
+
+## 2026-09-24 战斗更新
+
+新增方向 + 技能龙卷风、加大上移手机方向盘，修复小兵背后判定、起身围攻超额和闪避缓冲。当前规则、验证和后续商业品质工作见 [战斗完善记录](docs/COMBAT_POLISH.md)。

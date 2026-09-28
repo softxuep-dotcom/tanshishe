@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import * as Phaser from 'phaser';
 import { HEROES, StreetGame, type Fighter } from './simulation';
-import { KNOCKBACK } from './combat-data';
+import { KNOCKBACK, TORNADO } from './combat-data';
 import { BOSS_RULES, CHARGES } from './encounter-data';
 
 export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: () => void, sound: (name: string) => void) {
@@ -14,7 +14,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       this.ink = this.add.graphics(); this.game.canvas.setAttribute('aria-label', '南桥街横版格斗场地');
       if (import.meta.env.DEV) {
         const debug = window as unknown as { __STREET_READ__?: () => unknown };
-        debug.__STREET_READ__ = () => ({ phase:sim.phase, chapter:sim.chapter, wave:sim.wave, training:sim.training, paused:sim.paused, hero:{...sim.hero}, enemies:sim.enemies.map(e=>({...e})), crates:sim.crates.map(c=>({...c})), carried:sim.carried?{...sim.carried}:null, shots:sim.shots.map(s=>({...s})), kills:sim.kills, rage:sim.rage });
+        debug.__STREET_READ__ = () => ({ phase:sim.phase, chapter:sim.chapter, wave:sim.wave, training:sim.training, paused:sim.paused, hero:{...sim.hero}, enemies:sim.enemies.map(e=>({...e})), crates:sim.crates.map(c=>({...c})), carried:sim.carried?{...sim.carried}:null, shots:sim.shots.map(s=>({...s})), tornadoes:sim.tornadoes.map(t=>({...t,hitIds:[...t.hitIds]})), kills:sim.kills, rage:sim.rage });
         this.events.once('shutdown',()=>{delete debug.__STREET_READ__;});
       }
     }
@@ -122,9 +122,26 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       people.filter(f => f.hp > 0 || f.dead > 0).sort((a, b) => a.y - b.y).forEach(f => this.person(f, f.x - camera + offset, f.y));
       if(sim.carried) { crate(sim.hero.x-camera+offset,sim.hero.y-61,sim.carried.snack);this.label(sim.hero.x-camera-30,sim.hero.y-96,'攻击扔出',8,'#ffe0a0'); }
       for(const s of sim.shots) { const x=s.x-camera; if(s.crate)crate(x,s.y-19,s.snack);else{r(x-4,s.y-30,8,10,0xf29c61);r(x-4,s.y-31,8,2,0xffe8ba);g.lineStyle(1,0xffd39e,.7);g.lineBetween(x-Math.sign(s.vx)*18,s.y-24,x,s.y-24);} }
+      for (const t of sim.tornadoes) {
+        const x = t.x - camera + offset, fade = Math.min(1, (TORNADO.distance - t.travelled) / 40);
+        g.fillStyle(0x72d8d5, .13 * fade); g.fillEllipse(x, t.y - 28, 42, 62);
+        g.fillStyle(0x0c1523, .3 * fade); g.fillEllipse(x, t.y + 1, 41, 10);
+        // Five tapering rings and their moving bright edges read as a travelling vortex.
+        for (let ring = 0; ring < 5; ring++) {
+          const phase = t.age * 24 + ring * 1.3, w = 14 + ring * 7;
+          const rx = x + Math.sin(phase) * 3, ry = t.y - 7 - ring * 11;
+          g.lineStyle(3, ring % 2 ? 0xd6fff1 : 0x71d6dd, .8 * fade); g.strokeEllipse(rx, ry, w, 9);
+          r(rx + Math.cos(phase) * w / 2 - 3, ry + Math.sin(phase) * 3 - 1, 7, 3, 0xf2ffe7, fade);
+          g.lineStyle(1, 0x80d8d2, .25 * fade); g.lineBetween(rx - t.face * w / 2, ry, rx - t.face * (w / 2 + 15), ry + 4);
+        }
+        if (sim.training && sim.showRanges) { g.lineStyle(1, 0x8affeb, .7); g.strokeRect(x - TORNADO.radius, t.y - TORNADO.lane, TORNADO.radius * 2, TORNADO.lane * 2); }
+      }
       for (const s of sim.sparks) {
-        const x = s.x - camera, y = s.y - (1 - s.life) * 13; this.label(x - 6, y, s.text, 12, '#ffedb1');
-        if (/^\d/.test(s.text)) { g.lineStyle(2, 0xffebac, s.life * 2); for (let a = 0; a < 6; a++) { const angle = a * Math.PI / 3; g.lineBetween(x + Math.cos(angle) * 6, y + 18 + Math.sin(angle) * 6, x + Math.cos(angle) * 14, y + 18 + Math.sin(angle) * 14); } }
+        const x = s.x - camera, y = s.y - (1 - s.life) * 13, numeric = /^\d+$/.test(s.text);
+        // Arcade mode shows impact bursts, not damage numbers; the practice range keeps numbers for tuning.
+        const text = s.text.startsWith('霸体') ? '霸体' : s.text;
+        if (!numeric || (sim.training && sim.showRanges)) this.label(x - 6, y, text, 12, '#ffedb1');
+        if (numeric) { g.lineStyle(2, 0xffebac, s.life * 2); for (let a = 0; a < 6; a++) { const angle = a * Math.PI / 3; g.lineBetween(x + Math.cos(angle) * 6, y + 18 + Math.sin(angle) * 6, x + Math.cos(angle) * 14, y + 18 + Math.sin(angle) * 14); } }
       }
       const live = sim.enemies.filter(e => e.hp > 0);
       if (sim.phase === 'playing' && sim.encounterClear) this.label(width / 2 - (sim.training ? 62 : 24), 120, sim.training ? '已清场 · 可重置陪练' : '前进 →', 15, '#ffe093');
@@ -149,6 +166,8 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         this.label(8, 110, '黄框：地面攻击范围 / 十字：地面锚点', 8);
         this.label(8, 121, `竖框：身体高度 / ${sim.attackPhase ?? p.motion}`, 8);
       }
+      if (sim.superActive) this.label(width / 2 - 38, 70, '必 杀', 30, '#ffd66b');
+      if (sim.flash > 0) { g.fillStyle(0xffffff, Math.min(.45, sim.flash)); g.fillRect(0, 0, width, 270); }
       // 开场提示和 Boss 血条由 DOM HUD 负责，画布只留战场内的信息。
     }
     person(f: Fighter, x: number, ground: number) {
@@ -169,7 +188,9 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if (f.entryTime > 0) this.label(x - 15, y - 70, '入场中', 8, '#ffe093');
       if (sim.isBossVulnerable(f)) { g.lineStyle(2, 0x8adbc1, .8); g.strokeEllipse(x, ground + 1, 43, 13); }
       g.fillStyle(0x0c1523, .4); g.fillEllipse(x, ground + 1, (big ? 38 : 28) * Math.max(.65, 1 - f.height / 150), 9);
-      const r = (a: number, b: number, c: number, d: number, color: number) => { g.fillStyle(color, alpha); g.fillRect(Math.round(x + (face === 1 ? a : -a - c)), Math.round(y + b), c, d); };
+      // Two-frame white flash on a fresh hit.
+      const white = !isHero && f.pose === 'hurt' && f.poseTime > .16;
+      const r = (a: number, b: number, c: number, d: number, color: number) => { g.fillStyle(white ? 0xffffff : color, alpha); g.fillRect(Math.round(x + (face === 1 ? a : -a - c)), Math.round(y + b), c, d); };
       if (f.hp <= 0 || f.motion === 'launched' || f.motion === 'downed') { r(-20, -12, 32, 12, shirt); r(12, -13, 11, 12, 0xdfa77d); r(-27, -10, 9, 8, 0x1b2635); return; }
       if (f.guard > 0) {
         // Sidestep stance: readable as "about to answer", not as an idle pause.
@@ -207,8 +228,8 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         r(-20, -4, 12, 4, 0x171f2a); r(12, -6, 12, 4, 0x171f2a);
         return;
       }
-      if (f.wind > 0) { g.lineStyle(2, 0xfaa36e, .9); g.strokeEllipse(x, ground + 1, 43, 13); this.label(x - 3, y - 68, '!', 17, '#ffbe76'); if (f.kind === 'boss') { g.fillStyle(0xee6356, .17); g.fillRect(face > 0 ? x : x - 155, ground - 12, 155, 25); } }
-      if(f.kind==='longleg' && f.wind>0){g.fillStyle(0xffaa64,.2);g.fillRect(face>0?x:x-105,ground-24,105,48);this.label(x-20,y-83,'长踢预警',8,'#ffd88e');}
+      if (f.wind > 0) { g.lineStyle(2, 0xfaa36e, .9); g.strokeEllipse(x, ground + 1, 43, 13); this.label(x - 3, y - 68, '!', 17, '#ffbe76'); if (f.kind === 'boss' && f.move !== 'jab') { g.fillStyle(0xee6356, .17); g.fillRect(face > 0 ? x : x - 155, ground - 12, 155, 25); } }
+      if(f.kind==='longleg' && f.wind>0 && f.move!=='jab'){g.fillStyle(0xffaa64,.2);g.fillRect(face>0?x:x-105,ground-24,105,48);this.label(x-20,y-83,'长踢预警',8,'#ffd88e');}
       if (f.wind > 0) {
         // Chapter 3/4 bosses announce which of their strings is coming, not just that one is.
         const move = sim.bossPendingMove(f);
@@ -222,6 +243,10 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         }
       }
       if (f.pose === 'charge' && CHARGES[f.kind] && !isHero) { g.lineStyle(2, 0xffb27a, .5); g.lineBetween(x - face * 14, ground - 26, x - face * 40, ground - 26); }
+      if (f.pose === 'super') {
+        g.lineStyle(6, 0xffd66b, .85); g.strokeEllipse(x, y - 25, 150 + Math.sin(sim.time * 50) * 14, 70);
+        g.lineStyle(2, 0xfff3c4, .7); for (let k = 0; k < 5; k++) g.lineBetween(x - 70 + k * 35, ground - 60, x - 90 + k * 35, ground + 4);
+      }
       if (f.pose === 'special') { g.lineStyle(5, HEROES[sim.role].color, .7); g.strokeEllipse(x, y - 25, 110 + Math.sin(sim.time * 40) * 10, 55); }
       r(-w / 2 - 1, -36, w + 2, 23, 0x172332); r(-w / 2, -37, w, 22, shirt);
       r(-w / 2, -37, 5, 19, 0x283a49); r(-7, -15, 7, 13 + stride, 0x263749); r(2, -15, 7, 13 - stride, 0x344b5b);
@@ -233,11 +258,11 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
       if (big) { r(-7, -41, 15, 3, 0x3e3031); r(-11, -33, 7, 17, 0xdba077); }
       // Raised forearm guard, dropped while it winds up or flinches.
       if (f.kind === 'blocker' && f.wind <= 0 && f.stun <= 0 && f.pose !== 'punch') { r(9, -48, 7, 28, 0x5b6146); r(10, -47, 5, 4, 0xc8c09a); }
-      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash', 'lunge'].includes(f.pose);
+      const attack = ['punch', 'kick', 'uppercut', 'throw', 'charge', 'dash', 'lunge', 'tornado'].includes(f.pose);
       r(-w / 2 - 4, -32, 6, 14, shirt); r(-w / 2 - 4, -20, 6, 7, 0xe0ab80);
       if (attack && isHero && sim.attackPhase === 'recover') {
         r(6, -33, 10, 7, shirt); r(13, -31, 8, 9, 0xe0ab80);
-      } else if (attack && isHero && sim.windingUp) {
+      } else if (attack && isHero && (sim.windingUp || sim.tornadoWindingUp)) {
         r(3, -35, 10, 7, shirt); r(9, -39, 8, 9, 0xe0ab80);
       } else if (attack) {
         if (f.pose === 'kick') { r(7, -20, f.kind==='longleg'?82:24, 8, 0x344b5b); r(f.kind==='longleg'?87:28, -21, 9, 10, 0xe4c58e); }
@@ -246,6 +271,7 @@ export function createStreetGame(parent: HTMLElement, sim: StreetGame, publish: 
         g.lineStyle(2, 0xfbe6b1, .6); g.lineBetween(x + face * 20, y - 23, x + face * 39, y - 27);
       } else { r(w / 2 - 2, -32, 7, 13, shirt); r(w / 2, -22, 7, 7, 0xe0ab80); }
       if (f.pose === 'grab') { r(6,-35,18,7,shirt); r(22,-36,8,8,0xe0ab80); r(6,-26,18,7,shirt); r(22,-27,8,8,0xe0ab80); }
+      if (f.pose === 'tornado' && !sim.tornadoWindingUp) { r(6, -25, 18, 6, shirt); r(22, -26, 8, 7, 0xe0ab80); }
       if(isHero && sim.carried){r(-15,-58,6,30,shirt);r(10,-58,6,30,shirt);r(-15,-64,6,7,0xe0ab80);r(10,-64,6,7,0xe0ab80);}
       if (!isHero && f.hp < f.max) { g.fillStyle(0x172331); g.fillRect(x - 13, y - 62, 26, 3); g.fillStyle(0xe89d77); g.fillRect(x - 13, y - 62, 26 * f.hp / f.max, 3); }
       if (isHero && sim.heldBy) this.label(x - 22, y - 82, '连按挣脱', 9, '#ffb27a');

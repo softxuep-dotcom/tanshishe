@@ -154,9 +154,11 @@ test('throw shares physical flight and cannot regrab an airborne target', () => 
 test('lethal launch retains its corpse until landing and never stands up', () => {
   const g = arena(), e = g.enemies[0]; e.hp = 1; g.mx = 1; g.sprint = true;
   g.requestAction('attack'); advance(g, .07); g.clearInput(); g.hitstop = 0;
-  advance(g, .5); assert.equal(e.motion, 'launched'); assert.equal(e.dead, .65);
-  advance(g, .2); assert.equal(e.motion, 'downed'); assert.ok(e.dead > 0);
-  advance(g, 1); assert.equal(e.motion, 'downed'); assert.equal(e.dead, 0); assert.equal(g.kills, 1);
+  assert.equal(e.motion, 'launched'); assert.equal(e.dead, .65);
+  // The finishing blow plays in slow motion, so wait for the landing rather than a fixed time.
+  for (let t = 0; t < 3 && e.motion === 'launched'; t += 1 / 120) g.update(1 / 120);
+  assert.equal(e.motion, 'downed'); assert.ok(e.dead > 0, 'the corpse only starts fading once it lands');
+  advance(g, 1.5); assert.equal(e.motion, 'downed'); assert.equal(e.dead, 0); assert.equal(g.kills, 1);
 });
 
 test('pause and hitstop freeze heights and attack clocks; restart clears both', () => {

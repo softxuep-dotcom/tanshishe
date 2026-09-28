@@ -1,5 +1,5 @@
-import { AIR_PHYSICS, ATTACKS, DODGE_FOLLOW, GROUND_CHAIN, JUMP_SPEED, KNOCKBACK, attackDuration, type AttackDefinition, type HitImpact, type Role } from './combat-data.ts';
-import { BLOCKER, BOSS_MOVES, BOSS_RULES, CHARGES, ENCOUNTERS, FLANK_PENALTY, GRABBER, MOB_AI, REINFORCEMENTS, SLINGER_AI, SLOT_JITTER, STANDOFF, type MobPlan } from './encounter-data.ts';
+import { AIR_PHYSICS, ATTACKS, DODGE_FOLLOW, FINISHER, GROUND_CHAIN, JUMP_SPEED, KNOCKBACK, SUPER, TORNADO, attackDuration, type AttackDefinition, type HitImpact, type Role } from './combat-data.ts';
+import { BLOCKER, BOSS_JAB, BOSS_MOVES, BOSS_RULES, CHARGES, ENCOUNTERS, FLANK_PENALTY, GRABBER, MOB_AI, REINFORCEMENTS, SLINGER_AI, SLOT_JITTER, STANDOFF, type MobPlan } from './encounter-data.ts';
 import { CHAPTERS, CHAPTER_COUNT, waveBounds, type ChapterIndex } from './chapter-data.ts';
 export type { Role } from './combat-data.ts';
 export type { ChapterIndex } from './chapter-data.ts';
@@ -15,6 +15,7 @@ const BOSS_RECOVERY: Record<string, number> = { boss: BOSS_RULES.boss.recovery, 
 export const enemyHealth = (kind: Kind) => BOSS_HEALTH[kind] ?? MOB_HEALTH[kind] ?? MOB_HEALTH.punk;
 export interface Crate { id: number; x: number; y: number; snack: boolean; }
 export interface Shot { x: number; y: number; vx: number; life: number; crate: boolean; snack: boolean; }
+export interface Tornado { x: number; y: number; face: number; travelled: number; age: number; hitIds: Set<number>; }
 export interface Snack { x: number; y: number; }
 export const HEROES = {
   chen: { name: '陈野', title: '街头拳手', detail: '连拳 · 上勾拳 · 均衡', speed: 86, damage: 14, color: 0xf1ba63 },
@@ -25,7 +26,7 @@ export const HEROES = {
 export const PLAYABLE: readonly Role[] = ['chen'];
 export const BADGES: Record<Role, string> = { chen: '拳', tuo: '摔', man: '踢' };
 export type MotionState = 'grounded' | 'takeoff' | 'airborne' | 'landing' | 'launched' | 'downed' | 'rising';
-export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; height: number; heightVelocity: number; motion: MotionState; motionTime: number; vx: number; wind: number; charge: number; dead: number; knockbackAmount: number; knockbackRecovery: number; entryTime: number; vulnerable: number; bossAttack: number; guard: number; bossStep: number; bossMove: number; turn: number; }
+export interface Fighter { id: number; kind: Kind; x: number; y: number; hp: number; max: number; face: number; timer: number; stun: number; inv: number; pose: string; poseTime: number; height: number; heightVelocity: number; motion: MotionState; motionTime: number; vx: number; wind: number; charge: number; dead: number; knockbackAmount: number; knockbackRecovery: number; entryTime: number; vulnerable: number; bossAttack: number; guard: number; bossStep: number; bossMove: number; turn: number; move: string; }
 interface Mind { plan: MobPlan; chasing: number; }
 interface Flight { hitIds: Set<number>; collateral: boolean; wallBounces: number; juggled: boolean; }
 export interface Spark { x: number; y: number; life: number; text: string; }
@@ -47,7 +48,7 @@ export class StreetGame {
     if (!isBoss(e.kind)) return;
     const duration = BOSS_RECOVERY[e.kind] ?? BOSS_RULES.boss.recovery;
     e.vulnerable = duration; e.stun = duration; e.wind = 0; e.charge = 0; e.bossAttack = 0;
-    e.guard = 0; e.bossStep = 0;
+    e.guard = 0; e.bossStep = 0; e.move = '';
     e.pose = 'hurt'; e.poseTime = duration; e.timer = Math.max(e.timer, duration + .35);
   }
   // Chapter 3/4 bosses are trained fighters: telegraphed strings, then a readable recovery.
@@ -178,13 +179,21 @@ export class StreetGame {
     const p = this.hero;
     return this.minds.get(e.id)?.plan === 'flank' && (slot.x - p.x) * p.face > 0 ? FLANK_PENALTY : 0;
   }
+  private activeEnemyAttacks(except: Fighter) {
+    return this.enemies.filter(e => e !== except && e.hp > 0 && e.entryTime <= 0 && e.stun <= 0 &&
+      e.motion === 'grounded' && (e.wind > 0 || e.charge > 0 || e.bossAttack > 0)).length;
+  }
   /** A mob that gets up with the player standing over it swings back almost at once. */
   private onEnemyRise(e: Fighter) {
     const rules = MOB_AI[e.kind], p = this.hero;
     if (!rules?.riseWind || e.hp <= 0 || (this.training && this.freezeEnemies)) return;
     if (Math.abs(p.x - e.x) > 44 || Math.abs(p.y - e.y) > 18) return;
+    // Waking enemies share the same attack budget as approaching ones. A group
+    // knocked down together must not all counter on the very same frame.
+    if (this.activeEnemyAttacks(e) >= 2) { e.timer = Math.max(e.timer, .35); return; }
     e.face = p.x >= e.x ? 1 : -1; e.wind = rules.riseWind; e.timer = Math.max(e.timer, rules.riseWind + .5);
     e.pose = 'wind'; e.poseTime = e.wind; this.minds.delete(e.id);
+    this.sparks.push({ x: e.x, y: e.y - 66, life: .55, text: '起身反击' });
   }
   private heroPrevY = 199;
   private heroVy = 0;
@@ -242,9 +251,10 @@ export class StreetGame {
   }
   setTrainingOpponents(kind: EnemyKind, count: number) {
     if (!this.training) return;
+    this.clearTornadoes();
     this.spawnQueue = []; this.reinforcementTime = REINFORCEMENTS.delay; this.enemyLimit = 0;
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
-    this.strike = null; this.chainTime = 0; this.nextAttackStep = 0; this.enemySlots = []; this.grabbed = null; this.grabTime = 0; this.minds.clear(); this.heldBy = null;
+    this.strike = null; this.chainTime = 0; this.nextAttackStep = 0; this.enemySlots = []; this.grabbed = null; this.grabTime = 0; this.minds.clear(); this.heldBy = null; this.superMove = null; this.slowMo = 0;
     this.trainingEnemy = kind; this.trainingCount = Math.max(1, Math.min(4, Math.floor(count) || 1));
     this.enemies = Array.from({ length: this.trainingCount }, (_, i) => this.fighter(kind, 255 + i * 42, 177 + i % 3 * 24, enemyHealth(kind)));
     this.restockCrates();
@@ -266,7 +276,7 @@ export class StreetGame {
   /** A dodge may interrupt your own recovery frames, but never your windup or active frames. */
   get dodgeCancelReady() { return this.attackPhase === 'recover' && this.hero.stun <= 0 && !this.motionLocked && this.dodgeCooldown <= 0 && !this.carried; }
   private dodgeMotion: { x: number; y: number; remaining: number } | null = null;
-  private buffered: { action: Action; remaining: number }[] = [];
+  private buffered: { action: Action; remaining: number; direction: number }[] = [];
   private strike: { data: AttackDefinition; elapsed: number; face: number; damage: number; hitIds: Set<number>; landed: boolean; comboStep: number | null; comboChecked: boolean } | null = null;
   private chainTime = 0;
   get currentAttack() { return this.strike?.data ?? null; }
@@ -305,6 +315,7 @@ export class StreetGame {
   private squeezeTime = 0;
   private startHold(e: Fighter) {
     const p = this.hero;
+    this.tornadoCast = null;
     this.releaseGrab(); this.dropCrate(); this.strike = null; this.buffered = []; this.dodgeMotion = null; this.chainTime = 0;
     this.heldBy = e; this.heldTime = GRABBER.hold; this.squeezeTime = GRABBER.squeezeEvery;
     e.charge = 0; e.pose = 'grab'; e.poseTime = GRABBER.hold;
@@ -358,6 +369,89 @@ export class StreetGame {
     if (e.timer > BLOCKER.counterAfter) e.timer = BLOCKER.counterAfter;
     this.sparks.push({ x: e.x, y: e.y - 50, life: .35, text: '格挡' }); this.events.push('block');
   }
+  /** Screen flash strength for the renderer; decays in real time. */
+  flash = 0;
+  private slowMo = 0;
+  private superMove: { elapsed: number; next: number } | null = null;
+  tornadoes: Tornado[] = [];
+  private tornadoCast: { elapsed: number; face: number; released: boolean } | null = null;
+  get tornadoWindingUp() { return !!this.tornadoCast && !this.tornadoCast.released; }
+  get directionalSpecial() { return Math.abs(this.mx) > .5; }
+  private clearTornadoes() {
+    if (this.tornadoCast && this.hero.pose === 'tornado') { this.hero.timer = 0; this.hero.poseTime = 0; this.hero.pose = 'idle'; }
+    this.tornadoCast = null; this.tornadoes = [];
+  }
+  private beginTornado(direction: number) {
+    const p = this.hero;
+    p.face = Math.sign(direction); p.vx = 0;
+    p.timer = TORNADO.windup + TORNADO.recovery; p.poseTime = p.timer; p.pose = 'tornado';
+    p.inv = Math.max(p.inv, TORNADO.inv); this.rage -= TORNADO.cost;
+    this.strike = null; this.chainTime = 0; this.nextAttackStep = 0; this.dodgeFollow = 0;
+    this.tornadoCast = { elapsed: 0, face: p.face, released: false };
+    this.events.push('swing');
+  }
+  private updateTornadoes(dt: number) {
+    const cast = this.tornadoCast;
+    let born: Tornado | null = null, bornStep = 0;
+    if (cast) {
+      cast.elapsed += dt;
+      if (!cast.released && cast.elapsed >= TORNADO.windup) {
+        cast.released = true; bornStep = cast.elapsed - TORNADO.windup;
+        born = { x: this.hero.x + cast.face * 20, y: this.hero.y, face: cast.face, travelled: 0, age: 0, hitIds: new Set() };
+        this.tornadoes.push(born); this.events.push('tornado');
+        this.shake = Math.max(this.shake, .07);
+      }
+      if (cast.elapsed >= TORNADO.windup + TORNADO.recovery) this.tornadoCast = null;
+    }
+    const { left, right } = this.bounds;
+    for (const tornado of this.tornadoes) {
+      const from = tornado.x;
+      const distance = Math.max(0, Math.min(TORNADO.speed * (tornado === born ? bornStep : dt), TORNADO.distance - tornado.travelled,
+        tornado.face > 0 ? right - 10 - from : from - left - 10));
+      tornado.x += tornado.face * distance; tornado.travelled += distance; tornado.age += distance / TORNADO.speed;
+      // Swept contact catches everyone along the path, including on a slow phone frame.
+      const targets = this.enemies.filter(e => !tornado.hitIds.has(e.id) && Math.abs(e.y - tornado.y) < TORNADO.lane &&
+        e.height <= TORNADO.height && e.x >= Math.min(from, tornado.x) - TORNADO.radius && e.x <= Math.max(from, tornado.x) + TORNADO.radius)
+        .sort((a, b) => (a.x - b.x) * tornado.face);
+      for (const e of targets) {
+        if (!this.hit(e, TORNADO.damage, tornado.face * TORNADO.knockback,
+          { amount: KNOCKBACK.threshold, launchSpeed: TORNADO.lift, juggle: true, collateral: false })) continue;
+        tornado.hitIds.add(e.id);
+      }
+    }
+    this.tornadoes = this.tornadoes.filter(t => t.travelled < TORNADO.distance - 1e-8 && t.x > left + 10 && t.x < right - 10);
+  }
+  get superActive() { return this.superMove !== null; }
+  private beginSuper() {
+    const p = this.hero;
+    this.rage -= SUPER.cost; p.inv = Math.max(p.inv, SUPER.inv); p.timer = SUPER.duration; p.pose = 'super'; p.poseTime = SUPER.duration;
+    this.strike = null; this.chainTime = 0; this.superMove = { elapsed: 0, next: 0 };
+    this.hitstop = Math.max(this.hitstop, SUPER.freeze); this.flash = .35; this.shake = .35; this.events.push('super');
+  }
+  private updateSuper(dt: number) {
+    const s = this.superMove; if (!s) return;
+    const p = this.hero, { left, right } = this.bounds;
+    const targets = () => this.enemies.filter(e => e.hp > 0 && e.entryTime <= 0 && e.x >= left && e.x <= right);
+    s.elapsed += dt;
+    while (s.next < SUPER.hits.length && s.elapsed >= SUPER.hits[s.next]) {
+      for (const e of targets()) this.hit(e, SUPER.hitDamage, (e.x >= p.x ? 1 : -1) * 30, { amount: 0 });
+      s.next++; this.shake = Math.max(this.shake, .12);
+    }
+    if (s.next === SUPER.hits.length && s.elapsed >= SUPER.finishAt) {
+      s.next++;
+      for (const e of targets()) {
+        this.hit(e, SUPER.finishDamage, (e.x >= p.x ? 1 : -1) * 320, { amount: 1200, launchSpeed: SUPER.finishLift });
+        if (isBoss(e.kind) && e.hp > 0 && e.motion === 'grounded') this.openBossRecovery(e);
+      }
+      this.flash = Math.max(this.flash, .25); this.shake = .3; this.events.push('heavy');
+    }
+    if (s.elapsed >= SUPER.duration) this.superMove = null;
+  }
+  private bossJab(e: Fighter) {
+    const jab = BOSS_JAB[e.kind], p = this.hero; e.move = '';
+    e.pose = 'punch'; e.poseTime = .22;
+    if ((p.x - e.x) * e.face > -8 && (p.x - e.x) * e.face < jab.reach && Math.abs(p.y - e.y) < jab.lane) this.hurt(jab.damage, e.face);
+  }
   get crateInReach() {
     const p = this.hero;
     if (this.carried || p.motion !== 'grounded') return undefined;
@@ -373,19 +467,21 @@ export class StreetGame {
       this.buffered = this.buffered.filter(input => input.action !== action);
       const s = this.strike, window = s?.data.comboWindow;
       const comboRetention = action === 'attack' && s && window && s.elapsed >= window.open && s.elapsed < window.close ? window.close - s.elapsed + .04 : 0;
-      this.buffered.push({ action, remaining: Math.max(.18, comboRetention) });
+      const cancelRetention = action === 'dodge' && s ? s.data.windup + s.data.active - s.elapsed + .04 : 0;
+      this.buffered.push({ action, remaining: Math.max(.18, comboRetention, cancelRetention), direction: this.mx });
       this.buffered.sort((a, b) => priority[b.action] - priority[a.action]);
       const command = this.buffered.find(input => input.action !== 'attack');
       this.buffered = this.buffered.filter(input => input === command || input.action === 'attack');
     } else this.action(action);
   }
   constructor() { this.hero = this.fighter('chen', 85, 199, 150); }
-  fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, height: 0, heightVelocity: 0, motion: 'grounded', motionTime: 0, vx: 0, wind: 0, charge: 0, dead: 0, knockbackAmount: 0, knockbackRecovery: 0, entryTime: 0, vulnerable: 0, bossAttack: 0, guard: 0, bossStep: 0, bossMove: -1, turn: 0 }; }
+  fighter(kind: Kind, x: number, y: number, hp: number): Fighter { return { id: ++this.serial, kind, x, y, hp, max: hp, face: 1, timer: .8, stun: 0, inv: 0, pose: 'idle', poseTime: 0, height: 0, heightVelocity: 0, motion: 'grounded', motionTime: 0, vx: 0, wind: 0, charge: 0, dead: 0, knockbackAmount: 0, knockbackRecovery: 0, entryTime: 0, vulnerable: 0, bossAttack: 0, guard: 0, bossStep: 0, bossMove: -1, turn: 0, move: '' }; }
   start(role: Role, chapter: ChapterIndex = 0) {
+    this.clearTornadoes();
     this.spawnQueue = []; this.reinforcementTime = REINFORCEMENTS.delay; this.enemyLimit = 0;
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
     this.enemySlots = []; this.nextAttackStep = 0; this.grabbed = null; this.grabTime = 0;
-    this.minds.clear(); this.seed = 0x1f2e3d; this.heroVy = 0; this.heroPrevY = 199; this.heldBy = null;
+    this.minds.clear(); this.seed = 0x1f2e3d; this.heroVy = 0; this.heroPrevY = 199; this.heldBy = null; this.superMove = null; this.slowMo = 0; this.flash = 0;
     this.dodgeMotion = null; this.dodgeCooldown = 0; this.dodgeFollow = 0;
     this.strike = null; this.chainTime = 0;
     this.chapter = chapter; this.crates = []; this.carried = null; this.shots = []; this.snacks = [];
@@ -399,6 +495,7 @@ export class StreetGame {
   proceed() {
     if (this.phase === 'intro') { this.phase = 'playing'; this.spawn(); return; }
     if (this.phase !== 'bossIntro') return;
+    this.clearTornadoes();
     this.phase = 'playing';
     const kind = this.bossKind;
     this.enemies.push(this.fighter(kind, 1215, 197, enemyHealth(kind)));
@@ -406,6 +503,7 @@ export class StreetGame {
     if (this.chapterData.crates) { this.restockCrates(); this.crates.forEach(c => c.x += 140); }
   }
   spawn() {
+    this.clearTornadoes();
     this.flights.clear(); this.flightHits = []; this.flightTargets = [];
     this.enemySlots = [];
     const x = this.wave * 410;
@@ -437,7 +535,7 @@ export class StreetGame {
     this.enemies.push(enemy); this.reinforcementTime = REINFORCEMENTS.delay;
     this.sparks.push({ x: enemy.x, y: enemy.y - 65, life: .6, text: '增援' });
   }
-  action(a: Action, fresh = true) {
+  action(a: Action, fresh = true, direction = this.mx) {
     if (this.phase !== 'playing' || this.paused) return;
     const p = this.hero;
     if (this.heldBy) return;
@@ -496,7 +594,9 @@ export class StreetGame {
       this.events.push('heal'); return;
     }
     if (a === 'special') {
-      if (this.rage < 50) { this.sparks.push({ x: p.x, y: p.y - 63, life: .6, text: '怒气不足' }); return; }
+      if (this.rage < 50 && this.rage < SUPER.cost) { this.sparks.push({ x: p.x, y: p.y - 63, life: .6, text: '怒气不足' }); return; }
+      if (Math.abs(direction) > .5) { this.beginTornado(direction); return; }
+      if (this.rage >= SUPER.cost) { this.beginSuper(); return; }
       this.rage -= 50; p.inv = .8; p.timer = .7; p.pose = 'special'; p.poseTime = .65;
       for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - p.x) < 108 && Math.abs(e.y - p.y) < 49) this.hit(e, 40, (e.x >= p.x ? 1 : -1) * 250, { amount: 600, launchSpeed: 170 });
       this.shake = .3; this.events.push('special'); return;
@@ -564,13 +664,16 @@ export class StreetGame {
     e.hp = Math.max(0, e.hp - damage);
     if (!armored || !e.hp) {
       this.releaseEnemySlot(e.id);
-      e.stun = Math.max(e.vulnerable, isBoss(e.kind) ? .16 : .3); e.wind = 0; e.charge = 0; e.bossAttack = 0; e.guard = 0; e.bossStep = 0; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
+      e.stun = Math.max(e.vulnerable, isBoss(e.kind) ? .16 : .3); e.wind = 0; e.charge = 0; e.bossAttack = 0; e.guard = 0; e.bossStep = 0; e.move = ''; e.vx = velocity; e.pose = 'hurt'; e.poseTime = .22;
     }
     this.combo++; this.comboTime = 2; this.rage = Math.min(100, this.rage + 5);
     this.hitstop = Math.max(this.hitstop, Math.abs(velocity) > 100 ? .075 : .035);
     this.shake = Math.max(this.shake, Math.abs(velocity) > 100 ? .16 : .065);
     this.sparks.push({ x: e.x, y: e.y - e.height - 28, life: .33, text: `${armored && e.hp ? '霸体 ' : ''}${Math.round(damage)}` }); this.events.push('hit');
-    if (!e.hp) { e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5); }
+    if (!e.hp) {
+      e.dead = .65; this.kills++; this.rage = Math.min(100, this.rage + 5);
+      if (isBoss(e.kind) || this.remainingEnemies === 0) { this.slowMo = FINISHER.slowFor; this.flash = Math.max(this.flash, FINISHER.flash); }
+    }
     if (armored && e.hp) return true;
     e.knockbackAmount += Math.max(0, impact.amount); e.knockbackRecovery = KNOCKBACK.recoveryDelay;
     if (e.knockbackAmount >= KNOCKBACK.threshold || (impact.launchSpeed ?? 0) > 0 || juggling) {
@@ -579,7 +682,7 @@ export class StreetGame {
       // One juggle per launch: the fresh flight record inherits the spent hit.
       if (juggling) { const next = this.flights.get(e.id); if (next) next.juggled = true; }
       if (Math.abs(velocity) <= 100) {
-        this.hitstop = Math.max(this.hitstop, .075); this.shake = Math.max(this.shake, .16); this.events.push('heavy');
+        this.hitstop = Math.max(this.hitstop, .075); this.shake = Math.max(this.shake, .16); this.events.push('heavy'); this.flash = Math.max(this.flash, .1);
       }
     }
     return true;
@@ -590,6 +693,7 @@ export class StreetGame {
     this.dodgeMotion = null; this.dodgeFollow = 0;
     if (this.heldBy) { this.heldBy.stun = Math.max(this.heldBy.stun, .3); this.heldBy = null; }
     this.strike = null; this.buffered = []; this.chainTime = 0; this.releaseGrab();
+    this.tornadoCast = null;
     p.hp = Math.max(0, p.hp - damage); p.inv = .85; p.stun = .28; p.vx = face * 115; p.pose = 'hurt'; p.poseTime = .3;
     p.timer = 0;
     if (p.height > 0) { p.motion = 'launched'; p.heightVelocity = Math.min(0, p.heightVelocity); }
@@ -674,7 +778,11 @@ export class StreetGame {
   }
   update(delta: number) {
     if (this.phase !== 'playing' || this.paused) return;
-    const dt = Math.min(delta, .035); this.time += dt; this.shake = Math.max(0, this.shake - dt);
+    const real = Math.min(delta, .035);
+    this.flash = Math.max(0, this.flash - real);
+    const dt = this.slowMo > 0 ? real * FINISHER.timeScale : real;
+    this.slowMo = Math.max(0, this.slowMo - real);
+    this.time += dt; this.shake = Math.max(0, this.shake - dt);
     this.sparks = this.sparks.filter(s => (s.life -= dt) > 0);
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
     this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt); this.dodgeFollow = Math.max(0, this.dodgeFollow - dt);
@@ -714,15 +822,23 @@ export class StreetGame {
     }
     const p = this.hero; const alive = this.enemies.filter(e => e.hp > 0);
     this.updateStrike(dt);
+    // An intentional dodge pressed during hitstop/windup fires as soon as recovery opens.
+    if (this.dodgeCancelReady && this.buffered.some(input => input.action === 'dodge')) {
+      this.buffered = this.buffered.filter(input => input.action !== 'dodge'); this.action('dodge');
+    }
+    this.updateTornadoes(dt);
+    this.updateSuper(dt);
     if (!p.stun) {
       const len = Math.max(1, Math.hypot(this.mx, this.my));
-      const movement = this.motionLocked || this.grabbed || this.heldBy || p.pose === 'dodge' ? 0 : p.motion === 'airborne' ? .8 : p.timer > 0 ? .25 : 1;
+      const movement = this.motionLocked || this.grabbed || this.heldBy || this.tornadoCast || p.pose === 'dodge' ? 0 : p.motion === 'airborne' ? .8 : p.timer > 0 ? .25 : 1;
       p.x += this.mx / len * HEROES[this.role].speed * dt * movement * (this.running ? 1.65 : 1) * (this.carried ? .75 : 1);
       p.y += this.my / len * 61 * dt * movement;
       if (this.mx && p.timer <= 0) p.face = this.mx > 0 ? 1 : -1;
       if (this.buffered.length && p.timer <= 0 && !this.motionLocked) {
         // Takeoff retains a paired attack until the character is actually airborne.
-        while (this.buffered.length && p.timer <= 0 && !this.motionLocked) this.action(this.buffered.shift()!.action);
+        while (this.buffered.length && p.timer <= 0 && !this.motionLocked) {
+          const input = this.buffered.shift()!; this.action(input.action, true, input.direction);
+        }
       } else if (this.held) this.action('attack', false);
     }
     this.updateGrab(dt);
@@ -764,23 +880,28 @@ export class StreetGame {
       if (e.guard > 0) { this.updateBoxerGuard(e, dt); continue; }
       if (e.charge > 0) { const c = CHARGES[e.kind] ?? CHARGES.boss; const step = Math.min(dt, e.charge); e.charge -= step; e.x = clamp(e.x + e.face * c.speed * step, left + 15, right - 15); if (Math.abs(e.x - p.x) < c.reach && Math.abs(e.y - p.y) < c.lane) this.hurt(c.damage, e.face); if (e.charge <= 0) this.openBossRecovery(e); continue; }
       if (e.wind > 0) { e.wind -= dt; if (e.wind <= 0) {
-        if (this.isBoxer(e.kind)) this.releaseBossMove(e);
+        if (e.move === 'jab') this.bossJab(e);
+        else if (this.isBoxer(e.kind)) this.releaseBossMove(e);
         else if (e.kind === 'boss') { e.charge = BOSS_RULES.boss.active; e.pose = 'charge'; e.poseTime = e.charge; }
         else if (e.kind === 'slinger') { this.shots.push({x:e.x+e.face*18,y:e.y,vx:e.face*SLINGER_AI.canSpeed,life:2.5,crate:false,snack:false}); e.pose='throw'; e.poseTime=.3; }
         else if (e.kind === 'longleg') { e.pose='kick'; e.bossAttack=BOSS_RULES.longleg.active; e.poseTime=e.bossAttack; if ((p.x-e.x)*e.face > -8 && (p.x-e.x)*e.face < 105 && Math.abs(e.y-p.y)<24) this.hurt(24,e.face,34); }
         else if (e.kind === 'grabber') { e.charge = GRABBER.lunge; e.pose = 'lunge'; e.poseTime = e.charge; }
-        else { e.pose = 'punch'; e.poseTime = .23; if (Math.abs(e.x - p.x) < 43 && Math.abs(e.y - p.y) < 22) this.hurt(MOB_AI[e.kind]?.damage ?? 10, e.face); }
+        else { e.pose = 'punch'; e.poseTime = .23; const forward = (p.x - e.x) * e.face; if (forward > -8 && forward < 43 && Math.abs(e.y - p.y) < 22) this.hurt(MOB_AI[e.kind]?.damage ?? 10, e.face); }
       } continue; }
       const dx = p.x - e.x, dy = p.y - e.y, facing = dx >= 0 ? 1 : -1;
       // Blockers turn slowly, so crossing over or dodging past opens their back for a moment.
       if (e.kind === 'blocker' && facing !== e.face) { e.turn += dt; if (e.turn >= BLOCKER.turnDelay) { e.face = facing; e.turn = 0; } }
       else { e.face = facing; e.turn = 0; }
-      const attackers = alive.filter(o => o !== e && (o.wind > 0 || o.charge > 0 || o.bossAttack > 0)).length;
+      const attackers = this.activeEnemyAttacks(e);
       const slot = this.enemySlots.find(s => s.occupant === e.id);
       const atAttackSlot = !this.isSlotEnemy(e) || (slot?.attack && Math.hypot(slot.x - e.x, slot.y - e.y) <= 3);
       if (this.isSlotEnemy(e)) this.think(e, dt);
       const approach = STANDOFF[e.kind], mob = MOB_AI[e.kind];
       const slinger = e.kind === 'slinger', laneY = slinger ? this.aimLane(e) : p.y;
+      const jab = BOSS_JAB[e.kind];
+      if (jab && Math.abs(dx) < jab.range && Math.abs(dy) < 16 && !e.timer && attackers < 2) {
+        e.move = 'jab'; e.wind = jab.wind; e.timer = jab.wind + jab.cooldown; e.pose = 'wind'; e.poseTime = e.wind; continue;
+      }
       if (atAttackSlot && Math.abs(dx) < (slinger ? 300 : approach?.range ?? 33) && Math.abs(laneY - e.y) < (slinger ? 10 : 16) && !e.timer && attackers < 2) {
         if (this.isBoxer(e.kind)) { this.beginBoxerMove(e); continue; }
         e.wind = slinger ? .9 : isBoss(e.kind) ? .8 : mob?.wind ?? .62;

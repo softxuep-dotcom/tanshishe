@@ -111,3 +111,40 @@ test('without struggling you get slammed; a dodge makes the lunge whiff', () => 
   d.requestAction('dodge'); advance(d, .4);
   assert.equal(d.heldBy, null); assert.ok(f.stun > 0, 'a whiffed lunge is punishable');
 });
+
+test('signature bosses jab a player standing in their face, without opening a window', () => {
+  for (const kind of ['boss', 'longleg']) {
+    const g = crowd(kind, 1), e = g.enemies[0]; g.godMode = false;
+    e.x = g.hero.x + 36; e.y = g.hero.y; e.timer = 0; g.update(1 / 60);
+    assert.equal(e.move, 'jab'); assert.ok(e.wind > 0 && e.wind <= .3, 'a quick telegraph, not the .8s signature windup');
+    const hp = g.hero.hp; advance(g, .35);
+    assert.ok(g.hero.hp < hp, 'the jab lands'); assert.equal(g.isBossVulnerable(e), false, 'jabs never open a punish window');
+    const far = crowd(kind, 1), f = far.enemies[0];
+    f.x = far.hero.x + 80; f.y = far.hero.y; f.timer = 0; far.update(1 / 60);
+    assert.equal(f.move, '', 'from mid range it goes for the signature move');
+  }
+});
+
+test('a full rage bar fires the super: every enemy in the street, and a surviving boss is left open', () => {
+  const g = crowd('punk', 3); g.freezeEnemies = true; g.rage = 100;
+  g.enemies.forEach((e, i) => { e.x = g.hero.x + 60 + i * 80; e.y = g.hero.y + (i - 1) * 30; });
+  g.requestAction('special');
+  assert.equal(g.superActive, true); assert.equal(g.rage, 0); assert.equal(g.hero.pose, 'super');
+  for (let t = 0; t < 4 && g.superActive; t += 1 / 60) g.update(1 / 60);
+  assert.equal(g.superActive, false, 'the super ends on its own');
+  for (const e of g.enemies) assert.ok(e.hp <= e.max - 3 * 18 - 36 || e.hp === 0, 'three hits and the finish land on everyone');
+  const b = crowd('boss', 1); b.freezeEnemies = true; b.rage = 100; const boss = b.enemies[0];
+  b.requestAction('special');
+  for (let t = 0; t < 4 && boss.hp > boss.max - 3 * 18 - 36; t += 1 / 60) b.update(1 / 60);
+  assert.equal(boss.hp, boss.max - 3 * 18 - 36); assert.equal(b.isBossVulnerable(boss), true, 'the super breaks super armor');
+  const half = crowd('punk', 1); half.rage = 60; half.requestAction('special');
+  assert.equal(half.superActive, false); assert.equal(half.rage, 10, 'below full rage it is still the 50-rage special');
+});
+
+test('the blow that clears an encounter plays in slow motion', () => {
+  const g = crowd('punk', 1); g.freezeEnemies = true; const e = g.enemies[0];
+  g.hit(e, 9999, 0); assert.ok(g.flash > 0, 'the finishing blow flashes the screen');
+  const before = g.time; advance(g, .2);
+  assert.ok(g.time - before < .1, 'sim time crawls right after the finishing blow');
+  const later = g.time; advance(g, .8); assert.ok(g.time - later > .5, 'then returns to full speed');
+});

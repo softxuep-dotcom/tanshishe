@@ -53,8 +53,15 @@ export default function StreetPage() {
   function sound(name: string) {
     const ctx = audio.current; if (!ctx || muteRef.current || ctx.state !== 'running') return;
     const oscillator = ctx.createOscillator(), gain = ctx.createGain(); const now = ctx.currentTime;
+    if (name === 'tornado') {
+      const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(1100, now);
+      filter.frequency.exponentialRampToValueAtTime(180, now + .3);
+      oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(420, now); oscillator.frequency.exponentialRampToValueAtTime(65, now + .3);
+      gain.gain.setValueAtTime(.001, now); gain.gain.linearRampToValueAtTime(.045, now + .025); gain.gain.exponentialRampToValueAtTime(.001, now + .32);
+      oscillator.connect(filter); filter.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(now + .33); return;
+    }
     oscillator.type = name === 'hit' || name === 'heavy' || name === 'hurt' ? 'square' : 'triangle';
-    oscillator.frequency.setValueAtTime(name === 'heavy' ? 65 : name === 'special' ? 250 : name === 'heal' ? 650 : name === 'hit' ? 125 : 85, now);
+    oscillator.frequency.setValueAtTime(name === 'heavy' ? 65 : name === 'super' ? 330 : name === 'block' ? 700 : name === 'special' ? 250 : name === 'heal' ? 650 : name === 'hit' ? 125 : 85, now);
     oscillator.frequency.exponentialRampToValueAtTime(name === 'heal' ? 1000 : 35, now + .12);
     gain.gain.setValueAtTime(name === 'swing' ? .012 : name === 'heavy' ? .065 : .035, now); gain.gain.exponentialRampToValueAtTime(.001, now + .14);
     oscillator.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(now + .15);
@@ -101,7 +108,8 @@ export default function StreetPage() {
     const recovering = action === 'dodge' && sim.dodgeCooldown > 0;
     const locked = action === 'special' && sim.rage < 50;
     const ready = action === 'special' && sim.rage >= 50;
-    const state = [action, ready ? 'available' : '', recovering ? 'recovering' : '', locked ? 'locked' : ''].filter(Boolean).join(' ');
+    const full = action === 'special' && sim.rage >= 100 && !sim.directionalSpecial;
+    const state = [action, ready ? 'available' : '', recovering ? 'recovering' : '', locked ? 'locked' : '', full ? 'super' : ''].filter(Boolean).join(' ');
     return <button className={`street-action ${state}`} aria-label={text} style={{ '--cooldown': action === 'dodge' ? Math.min(1, sim.dodgeCooldown / .55) : 0 } as CSSProperties} onPointerDown={e => {
       e.preventDefault();
       if (sim.paused || sim.phase !== 'playing') return;
@@ -122,6 +130,7 @@ export default function StreetPage() {
   const bossState = !boss ? ''
     : bossOpen ? `破绽 ${boss.vulnerable.toFixed(1)}s`
     : boss.motion !== 'grounded' ? '倒地恢复'
+    : boss.move === 'jab' && boss.wind > 0 ? '近身出拳 · 霸体'
     : boss.guard > 0 ? '侧移中 · 霸体'
     : boss.wind > 0 && bossMove ? `${MOVE_LABELS[bossMove]}预警 · 霸体`
     : '霸体 · 破绽里才打得出硬直';
@@ -166,7 +175,7 @@ export default function StreetPage() {
             <div className="hud-name"><strong>{HEROES[sim.role].name}</strong><em>{Math.ceil(sim.hero.hp)}<i>/{sim.hero.max}</i></em></div>
             <div className="hud-bar hp"><u style={{ width: `${sim.hero.hp / sim.hero.max * 100}%` }} /><i style={{ width: `${sim.hero.hp / sim.hero.max * 100}%` }} /></div>
             <div className="hud-bar rage" data-ready={sim.rage >= 50 ? 'yes' : 'no'}><i style={{ width: `${sim.rage}%` }} /><b /></div>
-            <small className="hud-rage-label">怒气 {sim.rage}/100{sim.rage >= 50 && <em>绝招就绪</em>}</small>
+            <small className="hud-rage-label">怒气 {sim.rage}/100{sim.rage >= 100 ? <em>必杀就绪</em> : sim.rage >= 50 && <em>绝招就绪</em>}</small>
           </div>
           {boss && <div className="hud-boss" data-open={bossOpen ? 'yes' : 'no'}>
             <div className="hud-boss-name"><span>{bossDisplayName(boss.kind)}</span><em>{bossState}</em></div>
@@ -182,7 +191,7 @@ export default function StreetPage() {
           </div>
         </div>
         {sim.combo > 1 && <div className="street-combo" key={sim.combo}><b>{sim.combo}</b><span>HITS</span></div>}
-        {sim.time < 9 && <div className="street-tip" style={{ opacity: Math.min(1, (9 - sim.time) / 1.5) }}>{script.tip}</div>}
+        {sim.time < 9 && <div className="street-tip" style={{ opacity: Math.min(1, (9 - sim.time) / 1.5) }}>{sim.time < 4 ? '推左/右 + 技能：龙卷风（50怒）' : script.tip}</div>}
       </>}
       {sim.phase === 'select' && <div className="street-overlay street-select">
         <p className="street-kicker">原创街头动作 · 四章原型</p>
@@ -200,7 +209,7 @@ export default function StreetPage() {
         </button>)}</div>
         <div className="chapter-picker">{CHAPTERS.map((c, n) => <button key={c.code} aria-pressed={chapter===n} onClick={() => setChapter(n as ChapterIndex)}><b>{c.code}</b><span>{c.name}</span></button>)}</div>
         <button disabled={!ready || error} className="street-primary" onClick={() => { unlock(); sim.start(role, chapter); refresh(); }}>{error ? '加载失败，请刷新' : ready ? `选 ${HEROES[role].name} · 开打 →` : '正在准备夜市…'}</button>
-        <p className="street-help"><span>电脑</span> WASD 移动 · J 连打 · K 跳跃 · U 闪避 · I 绝招 · 走近敌人自动抓住<br /><span>手机</span> 左摇杆 + 右侧五键，横屏更开阔</p>
+        <p className="street-help"><span>电脑</span> WASD 移动 · J 连打 · K 跳跃 · U 闪避 · 左/右 + I 龙卷风<br /><span>手机</span> 左摇杆 + 右侧四键 · 推左/右 + 技能放龙卷风（50 怒）</p>
       </div>}
       {sim.phase === 'intro' && <div className="street-overlay street-story"><div className="street-plate">
         <span className="street-kicker">{script.intro.kicker}</span>
@@ -240,8 +249,8 @@ export default function StreetPage() {
     </section>
     <div className={`street-controls ${play && !sim.paused ? '' : 'inactive'}`}>
       <div className={`street-stick street-dpad ${sim.running ? 'running' : ''}`} data-dir={pad} aria-label="方向键，同方向双击奔跑" onPointerDown={e => { if (stick.current !== null) return; stick.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); unlock(); joystick(e); }} onPointerMove={joystick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><i className="u" /><i className="d" /><i className="l" /><i className="r" /><b /><small>{sim.running ? '奔跑 · 点攻击冲刺' : '同方向双击奔跑'}</small></div>
-      <div className="street-control-note"><b>WASD</b> 移动 · <b>Shift</b> 奔跑<br /><span>U 闪避 · 走近敌人自动抓住 · 跳踢追击</span></div>
-      <div className="street-buttons">{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.motion !== 'grounded' ? '落地可用' : '方向撤步')}{actionButton('special', '绝招', 'I', sim.rage >= 50 ? '可释放' : `${sim.rage}/50 怒气`)}{actionButton('jump', '跳跃', 'K', sim.running ? '滑铲' : '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J 扔出' : 'J 按住', sim.carried ? '扔出' : '按住连打')}</div>
+      <div className="street-control-note"><b>WASD</b> 移动 · <b>Shift</b> 奔跑<br /><span>左/右 + I 龙卷风 · U 闪避 · 走近敌人自动抓住</span></div>
+      <div className="street-buttons">{actionButton('dodge', '闪避', 'U', sim.carried ? '先放下木箱' : sim.hero.motion !== 'grounded' ? '落地可用' : '方向撤步')}{actionButton('special', sim.directionalSpecial ? '龙卷风' : sim.rage >= 100 ? '必杀' : '技能', 'I', sim.rage < 50 ? `${sim.rage}/50 怒气` : sim.directionalSpecial ? '前方击飞' : sim.rage >= 100 ? '回中必杀' : '方向龙卷')}{actionButton('jump', '跳跃', 'K', sim.running ? '滑铲' : '接攻击飞踢')}{actionButton('attack', sim.carried ? '投箱' : '攻击', sim.carried ? 'J 扔出' : 'J 按住', sim.carried ? '扔出' : '按住连打')}</div>
     </div>
   </main>;
 }

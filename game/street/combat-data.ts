@@ -82,3 +82,16 @@ export interface HitImpact {
   collateral?: boolean;
 }
 export const attackDuration = (attack: AttackDefinition) => attack.windup + attack.active + attack.recover;
+
+// Full-rage super: a cut-in freeze, three hits on every enemy in the current street, then a launching finish.
+// A boss that survives the finish is left in its punish window (the super breaks super armor).
+export const SUPER = { cost: 100, freeze: .35, duration: 1.05, hits: [.2, .35, .5], hitDamage: 18, finishAt: .72, finishDamage: 36, finishLift: 230, inv: 1.3 };
+// Direction + special: a committed cast followed by a finite, lane-bound travelling strike.
+// Neutral special keeps the existing close-range escape / full-rage super.
+export const TORNADO = {
+  cost: 50, windup: .12, recovery: .28, inv: .18,
+  speed: 280, distance: 265, radius: 18, lane: 25, height: 62,
+  damage: 32, knockback: 210, lift: 185,
+};
+// The blow that downs a boss or clears an encounter plays in slow motion.
+export const FINISHER = { slowFor: .45, timeScale: .35, flash: .3 };
